@@ -1,0 +1,15 @@
+[package]
+name = "honeypot"
+description = "Homemade honeypot: fake login traps that record what an attacker tries, for authorized labs only"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.74"
+
+[lib]
+name = "honeypot"
+path = "src/lib.rs"
+
+[[bin]]
+name = "honeypot"
+path = "src/main.rs"
