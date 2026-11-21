@@ -346,3 +346,136 @@ fn los_clics_en_la_web_falsa_quedan_registrados() {
 
     let _ = std::fs::remove_file(&log_path);
 }
+
+#[test]
+fn una_linea_demasiado_larga_cierra_la_sesion() {
+    let log_path = temp_log("honeypot-it-linea.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
+    let address = listener.local_addr().expect("no se pudo leer la dirección");
+
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("no se pudo aceptar");
+        honeypot::trap::serve_ssh_session_con_limites(
+            stream,
+            &log,
+            "s-linea",
+            10,
+            Duration::from_secs(5),
+        );
+    });
+
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut buffer = String::new();
+    read_until(&mut stream, &mut buffer, "login: ");
+    // 10 000 bytes sin salto de línea: la trampa no puede guardarlos todos.
+    stream.write_all(&vec![b'A'; 10_000]).unwrap();
+
+    let mut resto = String::new();
+    let _ = stream.read_to_string(&mut resto);
+
+    std::thread::sleep(Duration::from_millis(200));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"linea_demasiada_larga\""),
+        "debía anotarse la línea demasiado larga: {content}"
+    );
+
+    let _ = std::fs::remove_file(&log_path);
+}
+
+#[test]
+fn la_sesion_termina_por_plazo_absoluto_aunque_el_atacante_no_calle() {
+    let log_path = temp_log("honeypot-it-plazo.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
+    let address = listener.local_addr().expect("no se pudo leer la dirección");
+
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("no se pudo aceptar");
+        // Un segundo de plazo: el cliente nunca se queda callado, así que solo el
+        // tope absoluto puede cerrar la sesión.
+        honeypot::trap::serve_ssh_session_con_limites(
+            stream,
+            &log,
+            "s-plazo",
+            10,
+            Duration::from_secs(1),
+        );
+    });
+
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut buffer = String::new();
+    read_until(&mut stream, &mut buffer, "login: ");
+
+    // El atacante gotea: un byte cada 100 ms, para que el reloj de inactividad
+    // nunca se dispare.
+    let mut escritor = stream.try_clone().expect("no se pudo duplicar la conexión");
+    let goteo = std::thread::spawn(move || {
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_millis(100));
+            if escritor.write_all(b"x").is_err() {
+                break;
+            }
+        }
+    });
+
+    let mut resto = String::new();
+    let _ = stream.read_to_string(&mut resto);
+    goteo.join().ok();
+
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"sesion_timeout\""),
+        "debía anotarse el fin de sesión por plazo: {content}"
+    );
+
+    let _ = std::fs::remove_file(&log_path);
+}
+
+#[test]
+fn la_query_string_no_cambia_la_ruta() {
+    let log_path = temp_log("honeypot-it-query.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let address = trap::start_http_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
+        .expect("no se pudo abrir la trampa web");
+
+    // La raíz con query string es la página de login, no un 404.
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream
+        .write_all(b"GET /?foo=bar HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    let mut page = String::new();
+    stream.read_to_string(&mut page).unwrap();
+    assert!(page.starts_with("HTTP/1.1 200 OK"), "respuesta: {page}");
+    assert!(page.contains("<form"), "falta el formulario: {page}");
+
+    // Y el panel con query string también, además de quedar registrado el clic.
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream
+        .write_all(b"GET /panel?x=1 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    let mut page = String::new();
+    stream.read_to_string(&mut page).unwrap();
+    assert!(page.starts_with("HTTP/1.1 200 OK"), "respuesta: {page}");
+
+    std::thread::sleep(Duration::from_millis(200));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"http_click\""),
+        "debía anotarse el clic en el panel: {content}"
+    );
+    // En el registro se guarda la ruta completa, con la query string.
+    assert!(
+        content.contains("\"path\":\"/panel?x=1\""),
+        "la ruta original debe quedar en el registro: {content}"
+    );
+
+    let _ = std::fs::remove_file(&log_path);
+}

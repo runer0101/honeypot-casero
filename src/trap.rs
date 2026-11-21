@@ -2,7 +2,7 @@
 
 use crate::log::{Event, EventLog};
 use crate::shell;
-use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+use std::io::{BufReader, ErrorKind, Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -35,6 +35,15 @@ const MAX_HEAD_BYTES: usize = 8_192;
 /// Maximum size accepted for an HTTP body.
 const MAX_BODY_BYTES: usize = 4_096;
 
+/// Maximum size accepted for one line of the fake shell.
+///
+/// A client that never sends a newline cannot make the string grow without limit.
+const MAX_LINE_BYTES: usize = 8_192;
+
+/// Message used when someone tries to bind outside the loopback.
+const LOOPBACK_ONLY: &str = "el honeypot solo acepta direcciones de loopback (127.0.0.1 o ::1); \
+este laboratorio es una actividad autorizada";
+
 /// `true` for the loopback addresses the traps are allowed to bind.
 pub fn is_loopback(address: &IpAddr) -> bool {
     address.is_loopback()
@@ -42,6 +51,14 @@ pub fn is_loopback(address: &IpAddr) -> bool {
 
 /// Starts the SSH-like trap on `bind` and returns the address actually bound.
 pub fn start_ssh_trap(bind: SocketAddr, log: Arc<EventLog>) -> std::io::Result<SocketAddr> {
+    // The guard lives here, not only in the CLI: anyone who uses the library is also
+    // prevented from binding outside the loopback.
+    if !is_loopback(&bind.ip()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            LOOPBACK_ONLY,
+        ));
+    }
     let listener = TcpListener::bind(bind)?;
     let local = listener.local_addr()?;
     let sessions = Arc::new(AtomicU64::new(0));
@@ -85,8 +102,14 @@ pub fn serve_ssh_session_con_limites(
     };
     let mut reader = BufReader::new(stream);
     let started = Instant::now();
+    // Tope absoluto: por mucho que el atacante siga mandando bytes, la sesión se
+    // cierra al cumplirse el plazo.
+    let plazo = started + tiempo_maximo;
     // Si el atacante se queda callado, la sesión se cierra sola.
     let _ = reader.get_ref().set_read_timeout(Some(tiempo_maximo));
+    // Y lo mismo al escribir: un cliente que abre y no lee no puede dejar el hilo
+    // de la trampa bloqueado para siempre.
+    let _ = reader.get_ref().set_write_timeout(Some(tiempo_maximo));
 
     let _ = log.append(&Event::new("ssh", "connect", &peer, session));
     if write!(writer, "{SSH_BANNER}\r\n").is_err() {
@@ -96,12 +119,20 @@ pub fn serve_ssh_session_con_limites(
     let mut failures = 0usize;
     let mut attempts = 0usize;
     loop {
+        if Instant::now() >= plazo {
+            let _ = log.append(&Event::new("ssh", "sesion_timeout", &peer, session));
+            return;
+        }
         if write!(writer, "login: ").is_err() {
             return;
         }
-        let user = match read_line(&mut reader) {
+        let user = match read_line(&mut reader, plazo) {
             Lectura::Linea(user) => user,
             Lectura::Fin => return,
+            Lectura::DemasiadoLarga => {
+                let _ = log.append(&Event::new("ssh", "linea_demasiada_larga", &peer, session));
+                return;
+            }
             Lectura::TiempoAgotado => {
                 let _ = log.append(&Event::new("ssh", "sesion_timeout", &peer, session));
                 return;
@@ -110,9 +141,13 @@ pub fn serve_ssh_session_con_limites(
         if write!(writer, "Password: ").is_err() {
             return;
         }
-        let password = match read_line(&mut reader) {
+        let password = match read_line(&mut reader, plazo) {
             Lectura::Linea(password) => password,
             Lectura::Fin => return,
+            Lectura::DemasiadoLarga => {
+                let _ = log.append(&Event::new("ssh", "linea_demasiada_larga", &peer, session));
+                return;
+            }
             Lectura::TiempoAgotado => {
                 let _ = log.append(&Event::new("ssh", "sesion_timeout", &peer, session));
                 return;
@@ -160,12 +195,20 @@ pub fn serve_ssh_session_con_limites(
     }
 
     loop {
+        if Instant::now() >= plazo {
+            let _ = log.append(&Event::new("ssh", "sesion_timeout", &peer, session));
+            break;
+        }
         if write!(writer, "{SHELL_PROMPT}").is_err() {
             return;
         }
-        let command = match read_line(&mut reader) {
+        let command = match read_line(&mut reader, plazo) {
             Lectura::Linea(command) => command,
             Lectura::Fin => break,
+            Lectura::DemasiadoLarga => {
+                let _ = log.append(&Event::new("ssh", "linea_demasiada_larga", &peer, session));
+                break;
+            }
             Lectura::TiempoAgotado => {
                 let _ = log.append(&Event::new("ssh", "sesion_timeout", &peer, session));
                 break;
@@ -200,6 +243,13 @@ pub fn serve_ssh_session_con_limites(
 
 /// Starts the fake web login on `bind` and returns the address actually bound.
 pub fn start_http_trap(bind: SocketAddr, log: Arc<EventLog>) -> std::io::Result<SocketAddr> {
+    // Same guard as the SSH trap: the library never binds outside the loopback.
+    if !is_loopback(&bind.ip()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            LOOPBACK_ONLY,
+        ));
+    }
     let listener = TcpListener::bind(bind)?;
     let local = listener.local_addr()?;
     let sessions = Arc::new(AtomicU64::new(0));
@@ -242,16 +292,25 @@ pub fn serve_http_session_con_tiempo(
     let mut reader = stream;
     // Una petición web tampoco puede quedar esperando para siempre.
     let _ = reader.set_read_timeout(Some(tiempo_maximo));
+    // Y lo mismo al escribir: un cliente que no lee no puede dejar el hilo colgado.
+    let _ = reader.set_write_timeout(Some(tiempo_maximo));
+    let plazo = Instant::now() + tiempo_maximo;
 
     let head = match read_head(&mut reader) {
         Some(head) => head,
         None => return,
     };
+    if Instant::now() >= plazo {
+        return;
+    }
     let mut lines = head.split("\r\n");
     let request_line = lines.next().unwrap_or("");
     let mut parts = request_line.split_whitespace();
     let method = parts.next().unwrap_or("").to_string();
     let path = parts.next().unwrap_or("/").to_string();
+    // La query string no es parte de la ruta: «/?foo=bar» es la página de login.
+    // En el registro se guarda la ruta completa, con la query.
+    let ruta = path.split('?').next().unwrap_or("/").to_string();
 
     let mut content_length = 0usize;
     for line in lines {
@@ -271,7 +330,7 @@ pub fn serve_http_session_con_tiempo(
         }
     }
 
-    let (status, page) = match (method.as_str(), path.as_str()) {
+    let (status, page) = match (method.as_str(), ruta.as_str()) {
         ("GET", "/") => {
             let _ = log.append(
                 &Event::new("http", "http_get", &peer, session)
@@ -417,18 +476,55 @@ enum Lectura {
     Fin,
     /// The client stayed silent for too long.
     TiempoAgotado,
+    /// The line was longer than the accepted maximum.
+    DemasiadoLarga,
 }
 
-fn read_line(reader: &mut BufReader<TcpStream>) -> Lectura {
-    let mut line = String::new();
-    match reader.read_line(&mut line) {
-        Ok(0) => Lectura::Fin,
-        Ok(_) => Lectura::Linea(line.trim_end_matches(['\r', '\n']).to_string()),
-        Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
-            Lectura::TiempoAgotado
+/// Lee una línea del cliente, con dos límites:
+///
+/// - **Tope de longitud**: nunca se guardan más de [`MAX_LINE_BYTES`] bytes, así que un
+///   cliente que no manda el salto de línea no puede hacer crecer la memoria.
+/// - **Plazo absoluto**: se comprueba en cada byte, de modo que un atacante que gotea
+///   datos (uno cada 100 ms) tampoco puede alargar la sesión indefinidamente.
+fn read_line(reader: &mut BufReader<TcpStream>, plazo: Instant) -> Lectura {
+    let mut linea: Vec<u8> = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        if Instant::now() >= plazo {
+            return Lectura::TiempoAgotado;
         }
-        Err(_) => Lectura::Fin,
+        match reader.read(&mut byte) {
+            Ok(0) => {
+                return if linea.is_empty() {
+                    Lectura::Fin
+                } else {
+                    Lectura::Linea(cadena_de(&linea))
+                };
+            }
+            Ok(_) => {
+                if byte[0] == b'\n' {
+                    return Lectura::Linea(cadena_de(&linea));
+                }
+                linea.push(byte[0]);
+                if linea.len() > MAX_LINE_BYTES {
+                    return Lectura::DemasiadoLarga;
+                }
+            }
+            Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                // O se agotó el plazo, o el cliente se quedó callado: en los dos casos
+                // la sesión se cierra y queda anotada.
+                return Lectura::TiempoAgotado;
+            }
+            Err(_) => return Lectura::Fin,
+        }
     }
+}
+
+/// Convierte los bytes de una línea en texto, sin el salto de línea final.
+fn cadena_de(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .trim_end_matches(['\r', '\n'])
+        .to_string()
 }
 
 /// Reads the request head (up to the empty line) one byte at a time.
@@ -461,6 +557,30 @@ mod tests {
         assert!(is_loopback(&"::1".parse().unwrap()));
         assert!(!is_loopback(&"192.168.1.10".parse().unwrap()));
         assert!(!is_loopback(&"0.0.0.0".parse().unwrap()));
+    }
+
+    #[test]
+    fn las_trampas_no_escuchan_fuera_del_loopback() {
+        // La guarda vive dentro de las funciones que abren el socket: usar la
+        // biblioteca no permite saltársela.
+        let ruta = std::env::temp_dir().join("honeypot-guarda-test.jsonl");
+        let log = std::sync::Arc::new(
+            crate::log::EventLog::open(&ruta).expect("no se pudo abrir el registro"),
+        );
+
+        let error = start_ssh_trap("0.0.0.0:0".parse().unwrap(), std::sync::Arc::clone(&log))
+            .expect_err("la trampa SSH no debe escuchar fuera del loopback");
+        assert!(
+            error.to_string().contains("loopback"),
+            "el error debe explicar la guarda: {error}"
+        );
+
+        let error = start_http_trap("0.0.0.0:0".parse().unwrap(), std::sync::Arc::clone(&log))
+            .expect_err("la trampa web no debe escuchar fuera del loopback");
+        assert!(
+            error.to_string().contains("loopback"),
+            "el error debe explicar la guarda: {error}"
+        );
     }
 
     #[test]
