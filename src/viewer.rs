@@ -90,7 +90,7 @@ fn apply_event(session: &mut Session, fields: &[(String, String)]) {
         "download_attempt" => session
             .downloads
             .push(field(fields, "url").unwrap_or_default().to_string()),
-        "http_get" | "http_post" => session.requests.push(Request {
+        "http_get" | "http_post" | "http_click" => session.requests.push(Request {
             method: field(fields, "method").unwrap_or_default().to_string(),
             path: field(fields, "path").unwrap_or_default().to_string(),
             user: field(fields, "user").unwrap_or_default().to_string(),
@@ -117,6 +117,81 @@ fn field<'a>(fields: &'a [(String, String)], key: &str) -> Option<&'a str> {
         .iter()
         .find(|(name, _)| name == key)
         .map(|(_, value)| value.as_str())
+}
+
+/// Resumen agregado de todas las sesiones: lo que un analista mira primero.
+#[derive(Debug, Clone, Default)]
+pub struct Estadisticas {
+    pub sesiones: usize,
+    pub intentos: usize,
+    pub comandos: usize,
+    pub descargas: usize,
+    pub clics: usize,
+    pub ips_unicas: usize,
+    pub usuarios_mas_intentados: Vec<(String, usize)>,
+    pub comandos_mas_usados: Vec<(String, usize)>,
+    pub ips: Vec<String>,
+}
+
+/// Calcula las estadísticas agregadas de un conjunto de sesiones.
+///
+/// Solo cuenta: no guarda nada nuevo y no necesita ninguna biblioteca.
+pub fn calcular_estadisticas(sesiones: &[Session]) -> Estadisticas {
+    let mut usuarios: Vec<(String, usize)> = Vec::new();
+    let mut comandos: Vec<(String, usize)> = Vec::new();
+    let mut ips: Vec<String> = Vec::new();
+    let mut intentos = 0usize;
+    let mut descargas = 0usize;
+    let mut clics = 0usize;
+
+    for sesion in sesiones {
+        if !ips.contains(&sesion.peer) {
+            ips.push(sesion.peer.clone());
+        }
+        for intento in &sesion.attempts {
+            intentos += 1;
+            let contador = usuarios
+                .iter_mut()
+                .find(|(usuario, _)| usuario == &intento.user)
+                .map(|(_, total)| total);
+            match contador {
+                Some(total) => *total += 1,
+                None => usuarios.push((intento.user.clone(), 1)),
+            }
+        }
+        for comando in &sesion.commands {
+            let contador = comandos
+                .iter_mut()
+                .find(|(nombre, _)| nombre == comando)
+                .map(|(_, total)| total);
+            match contador {
+                Some(total) => *total += 1,
+                None => comandos.push((comando.clone(), 1)),
+            }
+        }
+        descargas += sesion.downloads.len();
+        clics += sesion
+            .requests
+            .iter()
+            .filter(|peticion| peticion.method == "GET" && peticion.path != "/")
+            .count();
+    }
+
+    // De mayor a menor: el más usado arriba.
+    usuarios.sort_by_key(|(_, total)| std::cmp::Reverse(*total));
+    comandos.sort_by_key(|(_, total)| std::cmp::Reverse(*total));
+
+    Estadisticas {
+        sesiones: sesiones.len(),
+        intentos,
+        comandos: comandos.len(),
+        descargas,
+        clics,
+        ips_unicas: ips.len(),
+        usuarios_mas_intentados: usuarios.into_iter().take(5).collect(),
+        comandos_mas_usados: comandos.into_iter().take(5).collect(),
+        ips,
+    }
 }
 
 /// Renders the sessions for a human reader.
@@ -191,6 +266,41 @@ pub fn render(sessions: &[Session]) -> String {
 
         out.push('\n');
     }
+
+    let estadisticas = calcular_estadisticas(sessions);
+    out.push_str("Estadísticas:\n");
+    out.push_str(&format!(
+        "  {} sesión(es) · {} intento(s) de acceso · {} orden(es) · {} descarga(s) · {} clic(s) en la web · {} IP(s) distinta(s)\n",
+        estadisticas.sesiones,
+        estadisticas.intentos,
+        estadisticas.comandos,
+        estadisticas.descargas,
+        estadisticas.clics,
+        estadisticas.ips_unicas
+    ));
+    if !estadisticas.usuarios_mas_intentados.is_empty() {
+        let usuarios: Vec<String> = estadisticas
+            .usuarios_mas_intentados
+            .iter()
+            .map(|(usuario, total)| format!("{usuario} ({total})"))
+            .collect();
+        out.push_str(&format!(
+            "  Usuarios más intentados: {}\n",
+            usuarios.join(", ")
+        ));
+    }
+    if !estadisticas.comandos_mas_usados.is_empty() {
+        let comandos: Vec<String> = estadisticas
+            .comandos_mas_usados
+            .iter()
+            .map(|(comando, total)| format!("{comando} ({total})"))
+            .collect();
+        out.push_str(&format!("  Órdenes más usadas: {}\n", comandos.join(", ")));
+    }
+    if !estadisticas.ips.is_empty() {
+        out.push_str(&format!("  IPs: {}\n", estadisticas.ips.join(", ")));
+    }
+
     out
 }
 
@@ -326,6 +436,30 @@ mod tests {
         assert!(text.contains("Órdenes (1): uname -a"));
         assert!(text.contains("Sesión 2 · http"));
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn las_estadisticas_cuentan_lo_importante() {
+        let path = write_fixture("honeypot-viewer-stats.jsonl");
+        let sessions = read_sessions(&path).expect("no se pudo leer el registro");
+        let estadisticas = calcular_estadisticas(&sessions);
+        assert_eq!(estadisticas.sesiones, 2);
+        assert_eq!(estadisticas.intentos, 1);
+        assert_eq!(estadisticas.comandos, 1);
+        assert_eq!(estadisticas.descargas, 1);
+        assert_eq!(estadisticas.ips_unicas, 2);
+        assert_eq!(estadisticas.usuarios_mas_intentados[0].0, "root");
+        assert_eq!(estadisticas.comandos_mas_usados[0].0, "uname -a");
+        assert_eq!(estadisticas.ips.len(), 2);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn las_estadisticas_de_un_registro_vacio_no_rompen() {
+        let estadisticas = calcular_estadisticas(&[]);
+        assert_eq!(estadisticas.sesiones, 0);
+        assert_eq!(estadisticas.ips_unicas, 0);
+        assert!(estadisticas.usuarios_mas_intentados.is_empty());
     }
 
     #[test]

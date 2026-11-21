@@ -2,11 +2,11 @@
 
 use crate::log::{Event, EventLog};
 use crate::shell;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Banner announced by the SSH-like trap.
 pub const SSH_BANNER: &str = "SSH-2.0-OpenSSH_9.6 Ubuntu-3ubuntu13";
@@ -16,6 +16,18 @@ pub const SHELL_PROMPT: &str = "root@victima:~# ";
 
 /// How many credentials are denied before the trap lets the attacker in.
 pub const MAX_FAILED_ATTEMPTS: usize = 2;
+
+/// Tope de credenciales aceptadas en una misma sesión.
+///
+/// Si el cliente insiste de más, la trampa lo echa y lo anota: así se distingue un
+/// atacante real de un script mal configurado.
+pub const MAX_INTENTOS: usize = 10;
+
+/// Tiempo máximo de una sesión.
+///
+/// Si el atacante se queda quieto, la sesión se cierra sola: ningún hilo debe quedar
+/// esperando para siempre.
+pub const TIEMPO_MAXIMO_SESION: Duration = Duration::from_secs(300);
 
 /// Maximum size accepted for an HTTP request head.
 const MAX_HEAD_BYTES: usize = 8_192;
@@ -54,6 +66,18 @@ pub fn start_ssh_trap(bind: SocketAddr, log: Arc<EventLog>) -> std::io::Result<S
 
 /// Serves one SSH-like session: banner, credentials, then the fake shell.
 pub fn serve_ssh_session(stream: TcpStream, log: &EventLog, session: &str) {
+    serve_ssh_session_con_limites(stream, log, session, MAX_INTENTOS, TIEMPO_MAXIMO_SESION);
+}
+
+/// Igual que [`serve_ssh_session`], pero con el tope de intentos y el tiempo máximo
+/// como parámetros: así las pruebas pueden usar valores pequeños.
+pub fn serve_ssh_session_con_limites(
+    stream: TcpStream,
+    log: &EventLog,
+    session: &str,
+    max_intentos: usize,
+    tiempo_maximo: Duration,
+) {
     let peer = peer_address(&stream);
     let mut writer = match stream.try_clone() {
         Ok(writer) => writer,
@@ -61,6 +85,8 @@ pub fn serve_ssh_session(stream: TcpStream, log: &EventLog, session: &str) {
     };
     let mut reader = BufReader::new(stream);
     let started = Instant::now();
+    // Si el atacante se queda callado, la sesión se cierra sola.
+    let _ = reader.get_ref().set_read_timeout(Some(tiempo_maximo));
 
     let _ = log.append(&Event::new("ssh", "connect", &peer, session));
     if write!(writer, "{SSH_BANNER}\r\n").is_err() {
@@ -68,21 +94,41 @@ pub fn serve_ssh_session(stream: TcpStream, log: &EventLog, session: &str) {
     }
 
     let mut failures = 0usize;
+    let mut attempts = 0usize;
     loop {
         if write!(writer, "login: ").is_err() {
             return;
         }
         let user = match read_line(&mut reader) {
-            Some(user) => user,
-            None => return,
+            Lectura::Linea(user) => user,
+            Lectura::Fin => return,
+            Lectura::TiempoAgotado => {
+                let _ = log.append(&Event::new("ssh", "sesion_timeout", &peer, session));
+                return;
+            }
         };
         if write!(writer, "Password: ").is_err() {
             return;
         }
         let password = match read_line(&mut reader) {
-            Some(password) => password,
-            None => return,
+            Lectura::Linea(password) => password,
+            Lectura::Fin => return,
+            Lectura::TiempoAgotado => {
+                let _ = log.append(&Event::new("ssh", "sesion_timeout", &peer, session));
+                return;
+            }
         };
+
+        attempts += 1;
+        if attempts > max_intentos {
+            let _ = log.append(
+                &Event::new("ssh", "limite_intentos", &peer, session)
+                    .with("intentos", &attempts.to_string()),
+            );
+            let _ = write!(writer, "Too many authentication failures.\r\n");
+            // La sesión se acaba aquí: el atacante ya no entra al shell.
+            return;
+        }
 
         if failures < MAX_FAILED_ATTEMPTS {
             failures += 1;
@@ -118,18 +164,24 @@ pub fn serve_ssh_session(stream: TcpStream, log: &EventLog, session: &str) {
             return;
         }
         let command = match read_line(&mut reader) {
-            Some(command) => command,
-            None => break,
+            Lectura::Linea(command) => command,
+            Lectura::Fin => break,
+            Lectura::TiempoAgotado => {
+                let _ = log.append(&Event::new("ssh", "sesion_timeout", &peer, session));
+                break;
+            }
         };
 
         let response = shell::respond(&command);
         let _ = log.append(&Event::new("ssh", "command", &peer, session).with("command", &command));
-        if response.download {
-            let url = command.split_whitespace().nth(1).unwrap_or("");
+        if let Some(descarga) = &response.download {
             let _ = log.append(
                 &Event::new("ssh", "download_attempt", &peer, session)
                     .with("command", &command)
-                    .with("url", url),
+                    .with("url", &descarga.url)
+                    .with("archivo", &descarga.archivo)
+                    .with("bytes", &descarga.bytes.to_string())
+                    .with("herramienta", descarga.herramienta),
             );
         }
         if !response.output.is_empty() && write!(writer, "{}\r\n", response.output).is_err() {
@@ -172,12 +224,24 @@ pub fn start_http_trap(bind: SocketAddr, log: Arc<EventLog>) -> std::io::Result<
 
 /// Serves one HTTP request: the fake login page, the fake login and a logged 404.
 pub fn serve_http_session(stream: TcpStream, log: &EventLog, session: &str) {
+    serve_http_session_con_tiempo(stream, log, session, TIEMPO_MAXIMO_SESION);
+}
+
+/// Igual que [`serve_http_session`], pero con el tiempo máximo como parámetro.
+pub fn serve_http_session_con_tiempo(
+    stream: TcpStream,
+    log: &EventLog,
+    session: &str,
+    tiempo_maximo: Duration,
+) {
     let peer = peer_address(&stream);
     let mut writer = match stream.try_clone() {
         Ok(writer) => writer,
         Err(_) => return,
     };
     let mut reader = stream;
+    // Una petición web tampoco puede quedar esperando para siempre.
+    let _ = reader.set_read_timeout(Some(tiempo_maximo));
 
     let head = match read_head(&mut reader) {
         Some(head) => head,
@@ -237,7 +301,21 @@ pub fn serve_http_session(stream: TcpStream, log: &EventLog, session: &str) {
                     .with("password", &password)
                     .with("status", "200"),
             );
-            ("200 OK", WELCOME_PAGE.to_string())
+            ("200 OK", PANEL_PAGE.to_string())
+        }
+        // Las páginas del «banco» de mentira: cada clic queda anotado, para saber qué
+        // busca el atacante una vez que cree que entró.
+        ("GET", "/panel")
+        | ("GET", "/cuenta")
+        | ("GET", "/transferencia")
+        | ("GET", "/descargar-factura") => {
+            let _ = log.append(
+                &Event::new("http", "http_click", &peer, session)
+                    .with("method", "GET")
+                    .with("path", &path)
+                    .with("status", "200"),
+            );
+            ("200 OK", PAGINA_FALSA.to_string())
         }
         _ => {
             let _ = log.append(
@@ -262,7 +340,13 @@ pub fn serve_http_session(stream: TcpStream, log: &EventLog, session: &str) {
 pub const LOGIN_PAGE: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Banco Popular — Acceso seguro</title></head>\n<body>\n<h1>Banco Popular</h1>\n<p>Introduzca sus credenciales para continuar.</p>\n<form method=\"post\" action=\"/login\">\n<p><label>Usuario <input name=\"user\" type=\"text\"></label></p>\n<p><label>Contraseña <input name=\"password\" type=\"password\"></label></p>\n<p><button type=\"submit\">Ingresar</button></p>\n</form>\n</body>\n</html>\n";
 
 /// Answer of the web trap after a login. It never authenticates anything.
-pub const WELCOME_PAGE: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Acceso</title></head>\n<body>\n<h1>Sesión iniciada</h1>\n<p>El acceso se ha registrado.</p>\n</body>\n</html>\n";
+///
+/// It shows a fake banking panel with links: every click on them is recorded, so the
+/// operator can see what the attacker looks for once it believes it got in.
+pub const PANEL_PAGE: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Banco Popular — Mi cuenta</title></head>\n<body>\n<h1>Banco Popular</h1>\n<p>Sesión iniciada. El acceso se ha registrado.</p>\n<ul>\n<li><a href=\"/cuenta\">Mi cuenta</a></li>\n<li><a href=\"/transferencia\">Transferencia</a></li>\n<li><a href=\"/descargar-factura\">Descargar factura</a></li>\n</ul>\n</body>\n</html>\n";
+
+/// Any page of the fake bank. It shows plausible but empty content.
+pub const PAGINA_FALSA: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Banco Popular</title></head>\n<body>\n<h1>Banco Popular</h1>\n<p>Documento sin contenido. La navegación quedó registrada.</p>\n</body>\n</html>\n";
 
 /// Answer for any other path.
 pub const NOT_FOUND_PAGE: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>404</title></head>\n<body>\n<h1>404 — página no encontrada</h1>\n</body>\n</html>\n";
@@ -325,11 +409,25 @@ fn peer_address(stream: &TcpStream) -> String {
         .unwrap_or_else(|_| "desconocido".to_string())
 }
 
-fn read_line(reader: &mut BufReader<TcpStream>) -> Option<String> {
+/// What a read from the client returned.
+enum Lectura {
+    /// A complete line arrived.
+    Linea(String),
+    /// The client closed the connection.
+    Fin,
+    /// The client stayed silent for too long.
+    TiempoAgotado,
+}
+
+fn read_line(reader: &mut BufReader<TcpStream>) -> Lectura {
     let mut line = String::new();
     match reader.read_line(&mut line) {
-        Ok(0) | Err(_) => None,
-        Ok(_) => Some(line.trim_end_matches(['\r', '\n']).to_string()),
+        Ok(0) => Lectura::Fin,
+        Ok(_) => Lectura::Linea(line.trim_end_matches(['\r', '\n']).to_string()),
+        Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+            Lectura::TiempoAgotado
+        }
+        Err(_) => Lectura::Fin,
     }
 }
 

