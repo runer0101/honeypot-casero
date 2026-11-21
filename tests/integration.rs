@@ -207,86 +207,98 @@ fn unknown_path_is_answered_and_logged() {
     let _ = std::fs::remove_file(&log_path);
 }
 
+/// Casos del tope de intentos: (intentos permitidos, pares de credenciales que se
+/// envían). El atacante siempre entra igual; cambia cuántas veces se equivoca antes
+/// de que la trampa lo cierre.
+const CASOS_LIMITE: [(usize, usize); 2] = [(1, 2), (2, 3)];
+
 #[test]
-fn el_tope_de_intentos_cierra_la_sesion_y_lo_anota() {
-    let log_path = temp_log("honeypot-it-limite.jsonl");
-    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
-    let address = listener.local_addr().expect("no se pudo leer la dirección");
+fn el_tope_de_intentos_se_cumple_en_varios_casos() {
+    for (max_intentos, pares) in CASOS_LIMITE {
+        let log_path = temp_log(&format!("honeypot-it-limite-{max_intentos}.jsonl"));
+        let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
+        let address = listener.local_addr().expect("no se pudo leer la dirección");
 
-    std::thread::spawn(move || {
-        let (stream, _) = listener.accept().expect("no se pudo aceptar");
-        // Tope de 2 intentos y 1 segundo: el tercer par de credenciales lo rebasa.
-        honeypot::trap::serve_ssh_session_con_limites(
-            stream,
-            &log,
-            "s-limite",
-            2,
-            Duration::from_secs(1),
-        );
-    });
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("no se pudo aceptar");
+            honeypot::trap::serve_ssh_session_con_limites(
+                stream,
+                &log,
+                "s-limite",
+                max_intentos,
+                Duration::from_secs(1),
+            );
+        });
 
-    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    let mut buffer = String::new();
-    // Los dos primeros pares se rechazan; el tercero rebasa el tope de 2.
-    for password in ["123456", "admin", "toor"] {
-        read_until(&mut stream, &mut buffer, "login: ");
-        stream.write_all(b"root\n").unwrap();
-        read_until(&mut stream, &mut buffer, "Password: ");
+        let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
         stream
-            .write_all(format!("{password}\n").as_bytes())
+            .set_read_timeout(Some(Duration::from_secs(5)))
             .unwrap();
+        let mut buffer = String::new();
+        // Se mandan un par más de los permitidos: el último lo rebasa.
+        for numero in 0..pares {
+            read_until(&mut stream, &mut buffer, "login: ");
+            stream.write_all(b"root\n").unwrap();
+            read_until(&mut stream, &mut buffer, "Password: ");
+            let password = format!("clave-{numero}\n");
+            stream.write_all(password.as_bytes()).unwrap();
+        }
+
+        let mut resto = String::new();
+        let _ = stream.read_to_string(&mut resto);
+
+        std::thread::sleep(Duration::from_millis(200));
+        let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+        assert!(
+            content.contains("\"event\":\"limite_intentos\""),
+            "debía anotarse el tope de intentos con {max_intentos}: {content}"
+        );
+        assert!(
+            resto.contains("Too many authentication failures"),
+            "la sesión tenía que cerrarse con {max_intentos} intentos: {resto}"
+        );
+
+        let _ = std::fs::remove_file(&log_path);
     }
-
-    let mut resto = String::new();
-    let _ = stream.read_to_string(&mut resto);
-
-    std::thread::sleep(Duration::from_millis(200));
-    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
-    assert!(
-        content.contains("\"event\":\"limite_intentos\""),
-        "debía anotarse el tope de intentos: {content}"
-    );
-    assert!(resto.contains("Too many authentication failures"));
-
-    let _ = std::fs::remove_file(&log_path);
 }
+
+/// Casos del tiempo agotado: (segundos de silencio, cuánto espera la prueba).
+const CASOS_TIEMPO: [(u64, u64); 2] = [(1, 1500), (2, 2600)];
 
 #[test]
 fn la_sesion_se_cierra_sola_si_el_atacante_se_queda_callado() {
-    let log_path = temp_log("honeypot-it-timeout.jsonl");
-    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
-    let address = listener.local_addr().expect("no se pudo leer la dirección");
+    for (segundos, espera) in CASOS_TIEMPO {
+        let log_path = temp_log(&format!("honeypot-it-timeout-{segundos}.jsonl"));
+        let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
+        let address = listener.local_addr().expect("no se pudo leer la dirección");
 
-    std::thread::spawn(move || {
-        let (stream, _) = listener.accept().expect("no se pudo aceptar");
-        // Un segundo de silencio y la sesión se cierra.
-        honeypot::trap::serve_ssh_session_con_limites(
-            stream,
-            &log,
-            "s-timeout",
-            2,
-            Duration::from_secs(1),
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("no se pudo aceptar");
+            honeypot::trap::serve_ssh_session_con_limites(
+                stream,
+                &log,
+                "s-timeout",
+                2,
+                Duration::from_secs(segundos),
+            );
+        });
+
+        let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+        let mut buffer = String::new();
+        read_until(&mut stream, &mut buffer, "SSH-2.0");
+        // No se envía nada: el atacante se queda callado.
+
+        std::thread::sleep(Duration::from_millis(espera));
+        let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+        assert!(
+            content.contains("\"event\":\"sesion_timeout\""),
+            "debía anotarse el tiempo agotado con {segundos} s: {content}"
         );
-    });
 
-    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
-    let mut buffer = String::new();
-    read_until(&mut stream, &mut buffer, "SSH-2.0");
-    // No se envía nada: el atacante se queda callado.
-
-    std::thread::sleep(Duration::from_millis(1500));
-    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
-    assert!(
-        content.contains("\"event\":\"sesion_timeout\""),
-        "debía anotarse el tiempo agotado: {content}"
-    );
-
-    let _ = std::fs::remove_file(&log_path);
+        let _ = std::fs::remove_file(&log_path);
+    }
 }
 
 #[test]

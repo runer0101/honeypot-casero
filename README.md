@@ -6,7 +6,8 @@
 Herramienta de seguridad para observar a un atacante: una **trampa** que parece un
 servicio real, deja entrar al atacante y **graba todo lo que hace**.
 
-- Rust, **cero dependencias externas** (solo la biblioteca estándar)
+- Rust, **cero dependencias externas**: solo la biblioteca estándar, sin dependencias
+  que instalar ni que mantener al día
 - Trampa tipo SSH (banner, `login:`, `Password:` y shell falso) y trampa web de login
 - Registro en JSONL, un objeto por línea, con hora exacta
 - Visor para leer el registro como texto, y un atacante simulado para la demostración
