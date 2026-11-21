@@ -31,7 +31,7 @@ cargo build --release
 
 El binario queda en `target/release/honeypot` y funciona sin internet.
 
-También hay versiones ya compiladas en la [release v0.2.0](https://github.com/runer0101/honeypot-casero/releases/tag/v0.2.0):
+También hay versiones ya compiladas en la [release v0.3.0](https://github.com/runer0101/honeypot-casero/releases/tag/v0.3.0):
 
 | Sistema | Archivo |
 | --- | --- |
@@ -78,7 +78,8 @@ texto**, no un servidor SSH real: un `ssh` de verdad no entra. Al conectar:
    `ls`, `cat /etc/passwd`, `pwd`, `wget`/`curl` y `exit`. Todas las órdenes quedan
    registradas. Una descarga simulada deja el mensaje real de `wget` (`Saving to: ...`,
    `200 OK`) y se anota el archivo, los bytes y la herramienta.
-5. **Límites de sesión**: máximo 10 credenciales por sesión y 5 minutos de inactividad.
+5. **Límites de sesión**: máximo 10 credenciales por sesión, 5 minutos de sesión
+   (tope absoluto) y línea de 8 KiB como máximo: una línea más larga cierra la sesión.
    Si el atacante se pasa o se queda callado, la sesión se cierra y queda anotado
    (`limite_intentos`, `sesion_timeout`).
 
