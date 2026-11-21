@@ -1,5 +1,8 @@
 # Honeypot casero
 
+[![CI](https://github.com/runer0101/honeypot-casero/actions/workflows/ci.yml/badge.svg)](https://github.com/runer0101/honeypot-casero/actions/workflows/ci.yml)
+[![Licencia](https://img.shields.io/badge/licencia-MIT-1e7a45?style=flat-square)](LICENSE)
+
 Herramienta propia de la actividad de ciberseguridad del 5 de diciembre: una **trampa**
 que parece un servicio real, deja entrar al atacante y **graba todo lo que hace**.
 
@@ -18,10 +21,24 @@ visita los enlaces, con su demo en vivo en
 Rust 1.74 o superior. Nada más: sin Python, sin Docker, sin red.
 
 ```bash
+git clone https://github.com/runer0101/honeypot-casero.git
+cd honeypot-casero
 cargo build --release
 ```
 
 El binario queda en `target/release/honeypot` y funciona sin internet.
+
+También hay versiones ya compiladas en la [release v0.1.0](https://github.com/runer0101/honeypot-casero/releases/tag/v0.1.0):
+
+| Sistema | Archivo |
+| --- | --- |
+| Linux x86-64 | `honeypot-linux-x86_64` |
+| Linux ARM64 | `honeypot-linux-aarch64` |
+| macOS Intel | `honeypot-macos-x86_64` |
+| macOS Apple Silicon | `honeypot-macos-aarch64` |
+| Windows x86-64 | `honeypot-windows-x86_64.exe` |
+
+En Linux y macOS hay que darle permiso de ejecución: `chmod +x honeypot-linux-x86_64`.
 
 ## Uso
 
@@ -102,6 +119,9 @@ honeypot-casero/
 │   ├── viewer.rs     # resumen legible del registro
 │   └── attack.rs     # el atacante simulado
 ├── tests/integration.rs  # sesión completa contra la trampa real
+├── .github/workflows/
+│   ├── ci.yml        # formato, lints y pruebas en cada push
+│   └── release.yml   # binarios de Linux, macOS y Windows en cada tag
 ├── docs/
 │   ├── PRESENTACION.md   # el guion completo de los 12 minutos
 │   ├── GUION.md          # la parte del honeypot

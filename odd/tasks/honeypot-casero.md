@@ -74,3 +74,7 @@ y responde siempre «Sesión iniciada», sin autenticar a nadie; cualquier otra 
 - **L8** (2026-11-21, Kairos) — El repositorio hermano `analizador-phishing` ya está
   publicado con su demo en vivo (<https://runer0101.github.io/analizador-phishing/>); se
   añadió ese enlace a las referencias de este repositorio y al guion completo.
+- **L9** (2026-11-21, Kairos) — El señor pergunta por qué este proyecto no estaba en GitHub:
+  estaba publicado solo el analizador. Se prepara la publicación del honeypot con licencia
+  MIT, workflows de CI y de release (cinco binarios con sus sumas SHA-256) y el README con
+  la sección de descargas, igual que en el repositorio hermano.

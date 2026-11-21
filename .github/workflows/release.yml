@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  binarios:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            nombre: honeypot-linux-x86_64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            nombre: honeypot-linux-aarch64
+            cross: aarch64-linux-gnu-gcc
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            nombre: honeypot-macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            nombre: honeypot-macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            nombre: honeypot-windows-x86_64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enlazador cruzado (ARM Linux)
+        if: ${{ matrix.cross != '' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Preparar Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Cache de Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ matrix.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Compilar
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Empaquetar
+        shell: bash
+        run: |
+          mkdir -p dist
+          binario="target/${{ matrix.target }}/release/honeypot"
+          if [ -f "$binario.exe" ]; then
+            binario="$binario.exe"
+          fi
+          # Solo el ejecutable: cargo deja además un archivo .d junto a él.
+          cp "$binario" "dist/${{ matrix.nombre }}"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.nombre }}
+          path: dist/${{ matrix.nombre }}
+
+  release:
+    needs: binarios
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Sumas de comprobación
+        shell: bash
+        run: |
+          cd dist
+          sha256sum * > honeypot-SHA256SUMS.txt
+          cat honeypot-SHA256SUMS.txt
+
+      - name: Crear la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Honeypot casero ${GITHUB_REF_NAME}" \
+            --notes "Binarios del honeypot casero: trampas que registran lo que hace un atacante. \
+          Solo escuchan en direcciones de loopback y son para un laboratorio autorizado. \
+          Verifique las descargas con el archivo \`honeypot-SHA256SUMS.txt\`."
