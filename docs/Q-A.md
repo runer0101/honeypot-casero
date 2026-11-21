@@ -87,6 +87,10 @@ la solución. Nunca defender más de lo que la herramienta hace.
 - **Cómo se mitiga hoy.** El registro sigue siendo útil: captura el intento de acceso, el
   usuario, las contraseñas, la sesión de órdenes y los tiempos. Para un laboratorio
   educativo y una demostración, esa información es el objetivo.
+- **Qué se endureció desde la v0.2.0** (y por qué no cambia la conclusión): la sesión
+  tiene ahora un tope **absoluto** además del de inactividad, las líneas de más de 8 KiB
+  cierran la sesión, y hay un timeout de escritura. Antes, un atacante que mandaba un byte
+  cada segundo podía mantener la sesión abierta indefinidamente.
 - **Trabajo futuro, en orden.** 1) Un transporte SSH mínimo (hasta *key exchange* por
   *curve25519-sha256* y un canal con *cipher* simulado) para que un cliente real entre.
   2) Migrar a un proyecto como **Cowrie**, que ya implementa el protocolo y trae una
@@ -150,7 +154,9 @@ la solución. Nunca defender más de lo que la herramienta hace.
     para entrar a otros sistemas), eso ya es otra cosa y ya no es un honeypot.
 - **Las cuatro guardas de esta herramienta:**
   1. **Solo loopback.** `serve` y `attack` **rechazan** cualquier dirección que no sea
-     `127.0.0.1` o `::1`. El programa se niega a escuchar en la red real.
+     `127.0.0.1` o `::1`. Y la comprobación está **dentro de la función que abre el
+     socket**, no solo en la CLI: quien use la biblioteca como una dependencia tampoco
+     puede enlazar `0.0.0.0`.
   2. **El atacante es nuestro.** La demo usa un script del propio proyecto; no hay
      escaneo, no hay terceros, no hay botnets.
   3. **Credenciales sintéticas.** No hay cuentas reales que probar ni datos reales que
@@ -168,7 +174,41 @@ la solución. Nunca defender más de lo que la herramienta hace.
 
 ---
 
+## 6. «Noté que `airbnb.com` me daba positivo. ¿Es un falso positivo?»
+
+**Respuesta corta:**
+> «Lo era, y por eso lo cambiamos en la v0.3.0: la marca tiene que aparecer como palabra
+> completa o al principio de la etiqueta. Antes cualquier subcadena servía, y «bnb» se
+> encontraba dentro de «airbnb».»
+
+**Respuesta completa:**
+
+- **Qué pasaba.** La regla de «usa el nombre de una marca» comparaba la marca con la
+  etiqueta completa buscando la marca como **subcadena**. Con la marca «bnb» (Banco
+  Nacional de Bolivia) eso hacía que `airbnb.com` se marcara como `marca_falsa` con tres
+  puntos: un sitio legítimo, con veredicto medio.
+- **Cómo se corrigió.** Ahora la marca tiene que aparecer como **palabra completa**
+  («paypal-seguro», «bcp-verificar») o **al principio** de una etiqueta («paypalseguro»).
+  Con eso `airbnb.com`, `pineapple.com` y `www.bancounion.com.bo` salen limpios, y en
+  cambio `paypal-seguro.com`, `bcp-verificar.com` y `bnb-seguro.com` se siguen detectando.
+  Hay una prueba que lo fija, para que no vuelva a pasar.
+- **El coste de la corrección, dicho en voz alta:** un dominio que **pega** la marca al
+  final (`mypaypal.com`) hoy no se marca. Se aceptó ese límite a propósito: aceptar el
+  final obligaría a marcar `pineapple.com` como si fuera `apple`, y un falso positivo sobre
+  un sitio legítimo se ve mucho más que un falso negativo difícil de imagining.
+- **La lección, que es la misma de siempre:** un detector que nunca se equivoca no existe.
+  Lo que importa es que cada acierto y cada error se pueda explicar.
+
+---
+
 ## Preguntas que también conviene tener preparadas
+
+**«¿Qué pasa si alguien intenta tumbar la trampa?»**
+> «La trampa tiene cuatro límites: 10 credenciales por sesión, 5 minutos de sesión (tope
+> absoluto, no solo de inactividad), líneas de 8 KiB como máximo y un timeout de escritura.
+> El que se queda callado, el que manda una línea infinita y el que abre la conexión y no
+> lee, cierran su sesión y quedan anotados en el registro.»
+
 
 **«¿Qué pasa si el phishing usa un dominio real, dentro de `facebook.com`?»**
 > «No lo detecta: el analizador solo mira la dirección, no la página. Detectar eso exige

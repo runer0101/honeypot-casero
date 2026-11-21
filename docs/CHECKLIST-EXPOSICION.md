@@ -52,6 +52,12 @@ Diez puntos, verificables en cinco minutos. Márcalos con una línea al lado.
       time scripts/demo.sh
       ```
 
+- [ ] **11. El log de ejemplo está limpio.** El archivo `logs/honeypot-servidor.log` va en el
+      repositorio: no puede contener la ruta de tu equipo.
+      ```bash
+      grep -n "/home/" logs/honeypot-servidor.log && echo "corregir antes de subirlo"
+      ```
+
 ## Plan B de un vistazo
 
 | Si falla… | Entonces… |
