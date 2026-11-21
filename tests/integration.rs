@@ -216,13 +216,13 @@ fn el_tope_de_intentos_cierra_la_sesion_y_lo_anota() {
 
     std::thread::spawn(move || {
         let (stream, _) = listener.accept().expect("no se pudo aceptar");
-        // Tope de 1 intento: el primer par de credenciales ya lo rebasa.
+        // Tope de 2 intentos y 1 segundo: el tercer par de credenciales lo rebasa.
         honeypot::trap::serve_ssh_session_con_limites(
             stream,
             &log,
             "s-limite",
-            1,
-            Duration::from_secs(5),
+            2,
+            Duration::from_secs(1),
         );
     });
 
@@ -231,15 +231,15 @@ fn el_tope_de_intentos_cierra_la_sesion_y_lo_anota() {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .unwrap();
     let mut buffer = String::new();
-    // El primer par de credenciales se rechaza; el segundo rebasa el tope de 1.
-    read_until(&mut stream, &mut buffer, "login: ");
-    stream.write_all(b"root\n").unwrap();
-    read_until(&mut stream, &mut buffer, "Password: ");
-    stream.write_all(b"123456\n").unwrap();
-    read_until(&mut stream, &mut buffer, "login: ");
-    stream.write_all(b"root\n").unwrap();
-    read_until(&mut stream, &mut buffer, "Password: ");
-    stream.write_all(b"admin\n").unwrap();
+    // Los dos primeros pares se rechazan; el tercero rebasa el tope de 2.
+    for password in ["123456", "admin", "toor"] {
+        read_until(&mut stream, &mut buffer, "login: ");
+        stream.write_all(b"root\n").unwrap();
+        read_until(&mut stream, &mut buffer, "Password: ");
+        stream
+            .write_all(format!("{password}\n").as_bytes())
+            .unwrap();
+    }
 
     let mut resto = String::new();
     let _ = stream.read_to_string(&mut resto);
@@ -269,7 +269,7 @@ fn la_sesion_se_cierra_sola_si_el_atacante_se_queda_callado() {
             stream,
             &log,
             "s-timeout",
-            10,
+            2,
             Duration::from_secs(1),
         );
     });
