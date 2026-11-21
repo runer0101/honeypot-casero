@@ -3,17 +3,16 @@
 [![CI](https://github.com/runer0101/honeypot-casero/actions/workflows/ci.yml/badge.svg)](https://github.com/runer0101/honeypot-casero/actions/workflows/ci.yml)
 [![Licencia](https://img.shields.io/badge/licencia-MIT-1e7a45?style=flat-square)](LICENSE)
 
-Herramienta propia de la actividad de ciberseguridad del 5 de diciembre: una **trampa**
-que parece un servicio real, deja entrar al atacante y **graba todo lo que hace**.
+Herramienta de seguridad para observar a un atacante: una **trampa** que parece un
+servicio real, deja entrar al atacante y **graba todo lo que hace**.
 
 - Rust, **cero dependencias externas** (solo la biblioteca estándar)
 - Trampa tipo SSH (banner, `login:`, `Password:` y shell falso) y trampa web de login
 - Registro en JSONL, un objeto por línea, con hora exacta
 - Visor para leer el registro como texto, y un atacante simulado para la demostración
 
-La otra mitad de la actividad es el repositorio hermano
-[`analizador-phishing`](../analizador-phishing): un detector de enlaces de phishing que no
-visita los enlaces, con su demo en vivo en
+El proyecto hermano es [`analizador-phishing`](../analizador-phishing): un detector de
+enlaces de phishing que no visita los enlaces, con su demo en vivo en
 <https://runer0101.github.io/analizador-phishing/>.
 
 ## Requisitos
@@ -134,9 +133,10 @@ honeypot-casero/
 │   ├── PRESENTACION.md   # el guion completo de los 12 minutos
 │   ├── GUION.md          # la parte del honeypot
 │   ├── DIAPOSITIVAS.md   # diapositivas 6 a 10
-│   └── ENSAYO.md         # ensayo sin internet y plan B
-├── scripts/demo.sh   # la demostración del honeypot en un comando
-└── odd/tasks/        # especificación de la actividad
+│   ├── ENSAYO.md         # ensayo sin internet y plan B
+│   ├── CHECKLIST-EXPOSICION.md # los diez puntos del día de la exposición
+│   └── captura-demo.png  # captura real de la demostración
+└── scripts/demo.sh   # la demostración del honeypot en un comando
 ```
 
 ## Verificación

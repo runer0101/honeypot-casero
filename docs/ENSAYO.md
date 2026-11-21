@@ -1,7 +1,7 @@
 # Guía de ensayo — Honeypot casero
 
-Objetivo: llegar al 5 de diciembre able to demonstrate the activity **sin depender de
-internet** y con un video de respaldo por si la sala falla.
+Objetivo: poder hacer la demostración **sin depender de internet** y con un video de
+respaldo por si la sala falla.
 
 ## 1. Qué se necesita el día de la exposición
 

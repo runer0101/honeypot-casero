@@ -1,4 +1,4 @@
-# Checklist del día — INJECTCONx01 (5 de diciembre, Salón Auditorio UNIFRANZ)
+# Checklist del día de la exposición
 
 Diez puntos, verificables en cinco minutos. Márcalos con una línea al lado.
 
@@ -30,8 +30,8 @@ Diez puntos, verificables en cinco minutos. Márcalos con una línea al lado.
 
 ## En el salón, antes de exponer
 
-- [ ] **6. Proyector y sonido.** Llegar a las **08:10**: el turno empieza a las 08:30 y la
-      sala se llena. Probar con las diapositivas en PDF, no con el Markdown.
+- [ ] **6. Proyector y sonido.** Llegar con margen antes de que empiece el turno y probar
+      con las diapositivas en PDF, no con el Markdown.
 - [ ] **7. Puertos libres.** La trampa usa 2222 y 8080. Si están ocupados, se cambian:
       ```bash
       SSH_PORT=32222 HTTP_PORT=38080 scripts/demo.sh

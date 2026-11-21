@@ -1,6 +1,6 @@
 # Presentación completa — actividad de ciberseguridad (12 minutos)
 
-Guion de la exposición tal como se va a dictar: las dos herramientas de la actividad. Este
+Guion de la exposición tal como se va a dictar: las dos herramientas. Este
 documento está duplicado en los dos repositorios para que la presentación completa esté a
 mano en cualquiera de los dos:
 
