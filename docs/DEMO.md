@@ -38,7 +38,7 @@ el ciclo del honeypot), las diapositivas en PDF y los binarios de la release.
 ./target/release/phishing-analyzer --demo
 ```
 
-Qué debe verse: los cinco casos con su puntaje y su veredicto (**ALTO**, **MEDIO**,
+Qué debe verse: los seis casos con su puntaje y su veredicto (**ALTO**, **MEDIO**,
 **BAJO**).
 
 ```bash

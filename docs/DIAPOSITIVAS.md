@@ -53,7 +53,10 @@ Sesión 1 · ssh · 127.0.0.1:47956 · 14 eventos
 - Todo en `127.0.0.1`; el programa **se niega** a escuchar en otra dirección
 - El «atacante» es un script del propio proyecto: bucle cerrado, cero terceros
 - Credenciales sintéticas; la dirección de descarga es del rango reservado de pruebas
-- Trabajo futuro: base de datos, avisos por IP nueva, panel web de sesiones
+- Límites de la sesión: 10 credenciales, 5 minutos, líneas de 8 KiB, `413` si el cuerpo
+  HTTP es enorme, y el registro rota al pasar de 8 MiB
+- Trabajo futuro: transporte SSH real (o Cowrie), pool de conexiones, base de datos,
+  avisos por IP nueva y panel web de sesiones
 
 ---
 

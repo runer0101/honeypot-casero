@@ -201,6 +201,32 @@ la solución. Nunca defender más de lo que la herramienta hace.
 
 ---
 
+## 7. «¿Qué pasa si alguien intenta tumbar la trampa?»
+
+**Respuesta corta:**
+> «La trampa tiene seis límites y todos están en el código: diez credenciales, cinco
+> minutos de sesión, líneas de 8 KiB, timeout de escritura, cuerpos HTTP de más de 4 KiB
+> rechazados con 413 y rotura del registro cuando pasa de 8 MiB.»
+
+**Respuesta completa:**
+
+- **Los límites, con su número:** como máximo **10** pares de credenciales por sesión;
+  **5 minutos** de sesión como tope absoluto (no solo de inactividad: un atacante que
+  mande un byte cada segundo tampoco puede alargarla); **8 KiB** por línea (una línea más
+  larga cierra la sesión y queda anotada); **timeout de escritura**, para que un cliente
+  que abre la conexión y no lee no deje el hilo colgado; **413** en vez de truncar en
+  silencio cuando el cuerpo HTTP pasa de 4 KiB; y **rotación** del registro al pasar de
+  8 MiB, conservando una generación.
+- **El límite que sí queda, y que conviene decir en voz alta:** la trampa levanta **un
+  hilo por conexión**, sin pool ni cola de trabajo. En un laboratorio en loopback es
+  irrelevante; expuesto a internet, un atacante que abre muchas conexiones a la vez
+  podría saturar la máquina. Un honeypot real usaría un pool con límite de conexiones.
+- **La respuesta de fondo:** la trampa está pensada para un laboratorio, no para un
+  servicio público. Las guardas y los límites existen para que nadie la convierta por
+  accidente en un problema para quien la hospeda.
+
+---
+
 ## Preguntas que también conviene tener preparadas
 
 **«¿Qué pasa si alguien intenta tumbar la trampa?»**

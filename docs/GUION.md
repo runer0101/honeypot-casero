@@ -74,7 +74,7 @@ demos (min 4–7 y 10–11). Si la demo falla, se sigue con el video de respaldo
 **Diapositiva 3 en vivo.** Tres comandos, en este orden.
 
 ```bash
-# 1. Los cinco casos de la demostración
+# 1. Los seis casos de la demostración
 ./target/release/phishing-analyzer --demo
 
 # 2. Un caso con la explicación de cada señal
@@ -86,7 +86,7 @@ demos (min 4–7 y 10–11). Si la demo falla, se sigue con el video de respaldo
 
 **Qué decir mientras corre:**
 
-- En el comando 1: «Estos son cinco enlaces. El primero imita a PayPal con un "1" en vez de
+- En el comando 1: «Estos son seis enlaces. El primero imita a PayPal con un "1" en vez de
   una "l": tres puntos solo por eso.»
 - En el comando 2: «Cada señal trae su código, su puntaje y su motivo. Y con `--explain`
   además trae la explicación y qué hacer: esto es lo que un usuario final puede leer sin
@@ -189,6 +189,12 @@ este orden:
 > la documentación y este guion están en los dos repositorios, con releases para Linux,
 > macOS y Windows y sus sumas SHA-256. Y la demostración funciona sin internet: se puede
 > clonar, compilar y probar en un laboratorio aislado.»
+
+> «Y una aclaración sobre la trampa, porque el honeypot también tiene cuatro guardas:
+> solo escucha en `127.0.0.1`; el atacante es un script del propio proyecto, escrito para
+> la demostración; las credenciales son sintéticas, no hay cuentas reales; y la descarga
+> falsa apunta a una dirección reservada de la RFC 5737 que nunca se contacta. Es un
+> laboratorio educativo, sin red y sin terceros.»
 
 > «Gracias. ¿Preguntas?»
 
