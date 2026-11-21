@@ -31,7 +31,7 @@ cargo build --release
 
 El binario queda en `target/release/honeypot` y funciona sin internet.
 
-También hay versiones ya compiladas en la [release v0.3.0](https://github.com/runer0101/honeypot-casero/releases/tag/v0.3.0):
+También hay versiones ya compiladas en la [release v0.4.0](https://github.com/runer0101/honeypot-casero/releases/tag/v0.4.0):
 
 | Sistema | Archivo |
 | --- | --- |

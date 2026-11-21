@@ -118,18 +118,18 @@ Lo que hay que señalar, en orden:
 | **El proyector no enciende o no lee el PDF** | Diapositivas impresas o segunda máquina; si no hay nada, hablar de pie | «Voy a explicarles las dos herramientas con la terminal solamente.» |
 | **No hay internet** | Se salta la demo web y se sigue con la terminal | «La demostración en el navegador necesita internet; esta no. Por eso la hice así.» |
 | **El WiFi del auditorio bloquea GitHub Pages** | Igual: demo web fuera, terminal dentro | «Por suerte la parte importante corre en mi máquina.» |
-| **El equipo del aula no tiene Rust** | Binarios de la release v0.3.0 desde el pendrive | «Este binario es el mismo que está publicado con su suma SHA-256.» |
+| **El equipo del aula no tiene Rust** | Binarios de la release v0.4.0 desde el pendrive | «Este binario es el mismo que está publicado con su suma SHA-256.» |
 | **El puerto 2222 o 8080 está ocupado** | `SSH_PORT=32222 HTTP_PORT=38080 ./scripts/demo.sh` | — |
 | **No se ve el color** | `NO_COLOR=1 ./scripts/demo.sh` | — |
 | **La demo se cuelga o da error** | `Ctrl+C`, al video de respaldo | «Aquí está el video con la misma demostración.» |
 | **Se va de tiempo** | Saltar la demo web y la tercera recomendación | — |
 
-### Binarios de la release v0.3.0 (funcionan 100 % sin internet)
+### Binarios de la release v0.4.0 (funcionan 100 % sin internet)
 
 ```bash
 # Linux x86-64
-curl -LO https://github.com/runer0101/analizador-phishing/releases/download/v0.3.0/phishing-analyzer-linux-x86_64
-curl -LO https://github.com/runer0101/analizador-phishing/releases/download/v0.3.0/phishing-analyzer-SHA256SUMS.txt
+curl -LO https://github.com/runer0101/analizador-phishing/releases/download/v0.4.0/phishing-analyzer-linux-x86_64
+curl -LO https://github.com/runer0101/analizador-phishing/releases/download/v0.4.0/phishing-analyzer-SHA256SUMS.txt
 sha256sum -c phishing-analyzer-SHA256SUMS.txt   # verificar la descarga
 chmod +x phishing-analyzer-linux-x86_64
 ./phishing-analyzer-linux-x86_64 --demo
@@ -138,8 +138,8 @@ chmod +x phishing-analyzer-linux-x86_64
 Lo mismo para el honeypot:
 
 ```bash
-curl -LO https://github.com/runer0101/honeypot-casero/releases/download/v0.3.0/honeypot-linux-x86_64
-curl -LO https://github.com/runer0101/honeypot-casero/releases/download/v0.3.0/honeypot-SHA256SUMS.txt
+curl -LO https://github.com/runer0101/honeypot-casero/releases/download/v0.4.0/honeypot-linux-x86_64
+curl -LO https://github.com/runer0101/honeypot-casero/releases/download/v0.4.0/honeypot-SHA256SUMS.txt
 sha256sum -c honeypot-SHA256SUMS.txt
 chmod +x honeypot-linux-x86_64
 ./honeypot-linux-x86_64 serve --bind 127.0.0.1 --ssh-port 2222 --http-port 8080 --log logs/honeypot.jsonl

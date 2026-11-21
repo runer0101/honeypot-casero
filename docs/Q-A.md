@@ -177,7 +177,7 @@ la solución. Nunca defender más de lo que la herramienta hace.
 ## 6. «Noté que `airbnb.com` me daba positivo. ¿Es un falso positivo?»
 
 **Respuesta corta:**
-> «Lo era, y por eso lo cambiamos en la v0.3.0: la marca tiene que aparecer como palabra
+> «Lo era, y por eso lo cambiamos en la v0.4.0: la marca tiene que aparecer como palabra
 > completa o al principio de la etiqueta. Antes cualquier subcadena servía, y «bnb» se
 > encontraba dentro de «airbnb».»
 
