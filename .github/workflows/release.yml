@@ -76,6 +76,30 @@ jobs:
           name: ${{ matrix.nombre }}
           path: dist/${{ matrix.nombre }}
 
+  procedencia:
+    needs: binarios
+    # Atestiguar los binarios da la garantía de que salieron de este commit.
+    # Si el servicio de atestiguación falla, la release ya está publicada: no se
+    # rompe por eso.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Atestiguar la procedencia de los binarios
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*"
+
   release:
     needs: binarios
     runs-on: ubuntu-latest
