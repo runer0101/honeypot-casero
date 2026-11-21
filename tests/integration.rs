@@ -15,6 +15,25 @@ fn temp_log(name: &str) -> PathBuf {
     path
 }
 
+/// Saca el valor de un campo de una línea JSON del registro.
+fn campo(linea: &str, clave: &str) -> Option<String> {
+    honeypot::log::parse_flat_object(linea).and_then(|campos| {
+        campos
+            .iter()
+            .find(|(nombre, _)| nombre == clave)
+            .map(|(_, valor)| valor.clone())
+    })
+}
+
+/// Lines del registro que contienen el evento indicado.
+fn lineas_con_evento(contenido: &str, evento: &str) -> Vec<String> {
+    contenido
+        .lines()
+        .filter(|linea| campo(linea, "event").as_deref() == Some(evento))
+        .map(|linea| linea.to_string())
+        .collect()
+}
+
 fn read_until(stream: &mut TcpStream, buffer: &mut String, marker: &str) -> String {
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
@@ -99,7 +118,23 @@ fn la_trampa_ssh_registra_la_sesion_completa() {
     assert!(content.contains("\"event\":\"download_attempt\""));
     assert!(content.contains("\"event\":\"session_end\""));
 
+    // La duración va en milisegundos: media sesión no puede verse como «0s».
+    let cierre = lineas_con_evento(&content, "session_end");
+    let duracion = campo(&cierre[0], "duration").expect("la sesión debe llevar duración");
+    assert!(
+        duracion.ends_with("ms"),
+        "la duración debe ir en milisegundos: {duracion}"
+    );
+    let milisegundos: u64 = duracion
+        .trim_end_matches("ms")
+        .parse()
+        .unwrap_or_else(|_| panic!("la duración no es un número de milisegundos: {duracion}"));
+
     let _ = std::fs::remove_file(&log_path);
+    assert!(
+        milisegundos < 60_000,
+        "la duración no cuadra: {milisegundos} ms"
+    );
 }
 
 #[test]
@@ -476,6 +511,235 @@ fn la_query_string_no_cambia_la_ruta() {
     assert!(
         content.contains("\"path\":\"/panel?x=1\""),
         "la ruta original debe quedar en el registro: {content}"
+    );
+
+    let _ = std::fs::remove_file(&log_path);
+}
+
+/// Un cuerpo que no cabe: la trampa lo rechaza con 413 en vez de truncarlo en silencio.
+#[test]
+fn un_cuerpo_demasiado_grande_se_rechaza_con_413() {
+    let log_path = temp_log("honeypot-it-413.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let address = trap::start_http_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
+        .expect("no se pudo abrir la trampa web");
+
+    // El cuerpo declarado supera con mucho el máximo admitido (4096 bytes).
+    let cuerpo = format!("user=admin&password={}", "x".repeat(5000));
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream
+        .write_all(
+            format!(
+                "POST /login HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{cuerpo}",
+                cuerpo.len()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    let mut respuesta = String::new();
+    let _ = stream.read_to_string(&mut respuesta);
+    assert!(
+        respuesta.starts_with("HTTP/1.1 413"),
+        "la respuesta debe ser 413: {respuesta}"
+    );
+
+    std::thread::sleep(Duration::from_millis(200));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"http_cuerpo_demasiado_grande\""),
+        "debía anotarse que el cuerpo era demasiado grande: {content}"
+    );
+    // Y no debe anotarse un login: el cuerpo no se leyó entero, así que no hay credenciales.
+    assert!(
+        !content.contains("\"event\":\"http_post\""),
+        "no debe anotarse un login con el cuerpo truncado: {content}"
+    );
+
+    let _ = std::fs::remove_file(&log_path);
+}
+
+/// Un cuerpo enviado por trozos: se ensambla y se registra como un login normal.
+#[test]
+fn un_cuerpo_por_trozos_se_registra_como_un_login() {
+    let log_path = temp_log("honeypot-it-chunked.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let address = trap::start_http_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
+        .expect("no se pudo abrir la trampa web");
+
+    let cuerpo = "user=admin&password=clave-de-prueba";
+    let corte = cuerpo.len() / 2;
+    let peticion = format!(
+        "POST /login HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{}\r\n{:x}\r\n{}\r\n0\r\n\r\n",
+        corte,
+        &cuerpo[..corte],
+        cuerpo.len() - corte,
+        &cuerpo[corte..]
+    );
+
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream.write_all(peticion.as_bytes()).unwrap();
+    let mut respuesta = String::new();
+    let _ = stream.read_to_string(&mut respuesta);
+    assert!(
+        respuesta.contains("Sesión iniciada"),
+        "la respuesta debe ser la del panel: {respuesta}"
+    );
+
+    std::thread::sleep(Duration::from_millis(200));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"http_post\""),
+        "faltó el login: {content}"
+    );
+    assert!(
+        content.contains("\"user\":\"admin\""),
+        "faltó el usuario: {content}"
+    );
+    assert!(
+        content.contains("\"password\":\"clave-de-prueba\""),
+        "faltó la contraseña: {content}"
+    );
+    // El cuerpo sí es UTF-8 válido: no hace falta duplicarlo en hexadecimal.
+    assert!(
+        !content.contains("cuerpo_hex"),
+        "no debe añadirse el hexadecimal de un cuerpo válido: {content}"
+    );
+
+    let _ = std::fs::remove_file(&log_path);
+}
+
+/// Un `chunked` que se pasa del máximo también se rechaza con 413.
+#[test]
+fn un_cuerpo_por_trozos_demasiado_grande_se_rechaza_con_413() {
+    let log_path = temp_log("honeypot-it-chunked-413.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let address = trap::start_http_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
+        .expect("no se pudo abrir la trampa web");
+
+    // Un solo trozo de 4097 bytes: ya supera el máximo admitido.
+    let mut peticion = b"POST /login HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n1001\r\n".to_vec();
+    peticion.extend(std::iter::repeat(b'x').take(4097));
+
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream.write_all(&peticion).unwrap();
+    let mut respuesta = String::new();
+    let _ = stream.read_to_string(&mut respuesta);
+    assert!(
+        respuesta.starts_with("HTTP/1.1 413"),
+        "la respuesta debe ser 413: {respuesta}"
+    );
+
+    std::thread::sleep(Duration::from_millis(200));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"http_cuerpo_demasiado_grande\""),
+        "debía anotarse que el cuerpo era demasiado grande: {content}"
+    );
+    assert!(
+        !content.contains("\"event\":\"http_post\""),
+        "no debe anotarse un login con el cuerpo truncado: {content}"
+    );
+
+    let _ = std::fs::remove_file(&log_path);
+}
+
+/// Un `chunked` mal formado cierra la sesión con un error claro, sin panic.
+#[test]
+fn un_cuerpo_por_trozos_mal_formado_cierra_la_sesion_con_un_error() {
+    // (petición, motivo) dos formas de romper el tamaño de los trozos.
+    let casos = [
+        ("zz\r\nabc\r\n0\r\n\r\n", "hexadecimal"),
+        ("10\r\nabc\r\n0\r\n\r\n", "no cuadra"),
+    ];
+
+    for (indice, (cuerpo, motivo)) in casos.iter().enumerate() {
+        let log_path = temp_log(&format!("honeypot-it-chunked-mal-{indice}.jsonl"));
+        let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+        // Se sirve la sesión con un plazo corto: el cuerpo que miente sobre su
+        // tamaño no llega nunca, así que no se espera al plazo largo de la trampa.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("no se pudo escuchar");
+        let address = listener.local_addr().expect("no se pudo leer la dirección");
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().expect("no se pudo aceptar");
+            honeypot::trap::serve_http_session_con_tiempo(
+                stream,
+                &log,
+                "h-chunked",
+                Duration::from_secs(2),
+            );
+        });
+
+        let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+        stream
+            .write_all(
+                format!(
+                    "POST /login HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{cuerpo}"
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        let mut resto = String::new();
+        let _ = stream.read_to_string(&mut resto);
+
+        std::thread::sleep(Duration::from_millis(200));
+        let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+        assert!(
+            content.contains("\"event\":\"http_cuerpo_invalido\""),
+            "debía anotarse el cuerpo inválido: {content}"
+        );
+        assert!(
+            content.contains(motivo),
+            "el motivo debe explicar el fallo ({motivo}): {content}"
+        );
+        assert!(
+            !content.contains("\"event\":\"http_post\""),
+            "no debe anotarse un login: {content}"
+        );
+
+        let _ = std::fs::remove_file(&log_path);
+    }
+}
+
+/// Un cuerpo con bytes que no son UTF-8 se guarda además en hexadecimal exacto.
+#[test]
+fn un_cuerpo_no_utf8_guarda_el_hexadecimal_exacto() {
+    let log_path = temp_log("honeypot-it-hex.jsonl");
+    let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
+    let address = trap::start_http_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
+        .expect("no se pudo abrir la trampa web");
+
+    // «se\xf1or» lleva un byte que no es UTF-8 válido.
+    let cuerpo: Vec<u8> = b"user=root&password=se\xf1or".to_vec();
+    let mut stream = TcpStream::connect(address).expect("no se pudo conectar");
+    stream
+        .write_all(
+            format!(
+                "POST /login HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                cuerpo.len()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+    stream.write_all(&cuerpo).unwrap();
+    let mut respuesta = String::new();
+    let _ = stream.read_to_string(&mut respuesta);
+
+    std::thread::sleep(Duration::from_millis(200));
+    let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
+    assert!(
+        content.contains("\"event\":\"http_post\""),
+        "faltó el login: {content}"
+    );
+
+    let lineas = lineas_con_evento(&content, "http_post");
+    let hex = campo(&lineas[0], "cuerpo_hex").expect("debe guardarse el cuerpo en hexadecimal");
+    assert_eq!(
+        hex, "757365723d726f6f742670617373776f72643d7365f16f72",
+        "el hexadecimal debe ser exacto, en minúsculas y sin espacios"
+    );
+    assert!(
+        !hex.contains(' ') && !hex.chars().any(|c| c.is_ascii_uppercase()),
+        "el hexadecimal va en minúsculas y sin espacios: {hex}"
     );
 
     let _ = std::fs::remove_file(&log_path);

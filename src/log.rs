@@ -6,7 +6,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -79,21 +79,50 @@ pub struct EventLog {
     path: PathBuf,
     file: Mutex<File>,
     echo: AtomicBool,
+    /// Cuántos eventos se han escrito: marca cuándo toca forzar el disco.
+    escritos: AtomicU64,
+    /// Tamaño a partir del cual el registro se rota al abrirlo.
+    max_bytes: u64,
 }
+
+/// Tamaño máximo del archivo de registro.
+///
+/// Superado este límite, al abrir el registro el archivo se aparta como `<archivo>.1`
+/// y empieza uno nuevo: así el disco no se llena sin límite en un laboratorio que
+/// funciona durante semanas.
+pub const MAX_LOG_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Cuántos eventos se escriben entre dos sincronizaciones con el disco.
+///
+/// Un corte de luz no puede llevarse un tramo largo de eventos: cada cierto número
+/// de ellos se fuerza la escritura al disco. El coste por evento sigue siendo bajo.
+pub const EVENTOS_ENTRE_SYNC: u64 = 100;
 
 impl EventLog {
     /// Abre (o crea) el archivo de registro y su carpeta.
+    ///
+    /// Si el archivo ya supera [`MAX_LOG_BYTES`], se aparta como `<archivo>.1` y se
+    /// empieza uno nuevo.
     pub fn open(path: &Path) -> io::Result<EventLog> {
+        EventLog::open_con_maximo(path, MAX_LOG_BYTES)
+    }
+
+    /// Igual que [`EventLog::open`], pero con el tamaño de rotación como parámetro:
+    /// así las pruebas pueden usar un límite pequeño.
+    pub fn open_con_maximo(path: &Path, max_bytes: u64) -> io::Result<EventLog> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
                 fs::create_dir_all(parent)?;
             }
         }
+        rotar_si_ya_crecio(path, max_bytes)?;
         let file = OpenOptions::new().create(true).append(true).open(path)?;
         Ok(EventLog {
             path: path.to_path_buf(),
             file: Mutex::new(file),
             echo: AtomicBool::new(false),
+            escritos: AtomicU64::new(0),
+            max_bytes,
         })
     }
 
@@ -111,6 +140,13 @@ impl EventLog {
                 .map_err(|_| io::Error::other("el mutex del registro quedó envenenado"))?;
             writeln!(guard, "{}", event.to_json())?;
             guard.flush()?;
+            // Cada cierto número de eventos se fuerza también al disco: un corte de
+            // luz no puede llevarse un tramo largo de eventos.
+            let escritos = self.escritos.fetch_add(1, Ordering::Relaxed) + 1;
+            if escritos % EVENTOS_ENTRE_SYNC == 0 {
+                // Un fallo al forzar el disco no debe perder el evento ya escrito.
+                let _ = guard.sync_all();
+            }
         }
 
         if self.echo.load(Ordering::Relaxed) {
@@ -129,6 +165,42 @@ impl EventLog {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    /// Tamaño a partir del cual el registro se rotará al abrirlo.
+    pub fn max_bytes(&self) -> u64 {
+        self.max_bytes
+    }
+}
+
+/// Aparta el registro ya grande como `<archivo>.1` para empezar uno nuevo.
+///
+/// Solo se conserva una generación anterior: la de más antes se sustituye.
+fn rotar_si_ya_crecio(path: &Path, max_bytes: u64) -> io::Result<()> {
+    let tamano = match fs::metadata(path) {
+        Ok(metadatos) => metadatos.len(),
+        // El archivo todavía no existe: no hay nada que rotar.
+        Err(_) => return Ok(()),
+    };
+    if tamano <= max_bytes {
+        return Ok(());
+    }
+
+    let respaldo = ruta_de_respaldo(path);
+    // Se elimina la generación anterior: solo se guarda una.
+    match fs::remove_file(&respaldo) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    fs::rename(path, &respaldo)?;
+    Ok(())
+}
+
+/// Ruta del archivo de respaldo: el original con `.1` detrás.
+fn ruta_de_respaldo(path: &Path) -> PathBuf {
+    let mut nombre = path.as_os_str().to_os_string();
+    nombre.push(".1");
+    PathBuf::from(nombre)
 }
 
 /// La hora actual como marca de tiempo ISO-8601 en UTC (`2026-11-20T19:37:00Z`).
@@ -349,5 +421,69 @@ mod tests {
             assert!(parse_flat_object(line).is_some(), "línea inválida: {line}");
         }
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn rota_el_registro_cuando_ya_supera_el_maximo() {
+        let path = std::env::temp_dir().join("honeypot-log-rotacion-test.jsonl");
+        let respaldo = std::env::temp_dir().join("honeypot-log-rotacion-test.jsonl.1");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&respaldo);
+
+        // Un máximo diminuto: basta un evento para superarlo.
+        let log = EventLog::open_con_maximo(&path, 10).expect("no se pudo abrir el log");
+        log.append(&Event::new("ssh", "connect", "127.0.0.1:1", "s-1"))
+            .expect("no se pudo escribir");
+        drop(log);
+
+        // Al reabrirlo, el archivo viejo se aparta como `.1` y empieza uno nuevo.
+        let log = EventLog::open_con_maximo(&path, 10).expect("no se pudo reabrir el log");
+        log.append(&Event::new("ssh", "command", "127.0.0.1:1", "s-1").with("command", "ls"))
+            .expect("no se pudo escribir");
+        drop(log);
+
+        assert!(
+            respaldo.exists(),
+            "el registro anterior debe quedar aparte como .1"
+        );
+        let viejo = std::fs::read_to_string(&respaldo).expect("no se pudo leer el respaldo");
+        assert_eq!(viejo.lines().count(), 1);
+        assert!(viejo.contains("\"event\":\"connect\""));
+
+        let nuevo = std::fs::read_to_string(&path).expect("no se pudo leer el registro");
+        assert_eq!(nuevo.lines().count(), 1);
+        assert!(nuevo.contains("\"event\":\"command\""));
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&respaldo);
+    }
+
+    #[test]
+    fn solo_se_conserva_una_generacion_anterior() {
+        let path = std::env::temp_dir().join("honeypot-log-rotacion-2-test.jsonl");
+        let respaldo = std::env::temp_dir().join("honeypot-log-rotacion-2-test.jsonl.1");
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&respaldo);
+
+        for numero in 0..3 {
+            let log = EventLog::open_con_maximo(&path, 10).expect("no se pudo abrir el log");
+            log.append(
+                &Event::new("ssh", "connect", "127.0.0.1:1", "s-1").with("n", &numero.to_string()),
+            )
+            .expect("no se pudo escribir");
+            drop(log);
+        }
+
+        // La tercera apertura sustituyó el `.1` anterior: solo queda una generación.
+        let respaldo_texto =
+            std::fs::read_to_string(&respaldo).expect("no se pudo leer el respaldo");
+        assert_eq!(respaldo_texto.lines().count(), 1);
+        assert!(
+            respaldo_texto.contains("\"n\":\"1\""),
+            "contenido: {respaldo_texto}"
+        );
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(&respaldo);
     }
 }
