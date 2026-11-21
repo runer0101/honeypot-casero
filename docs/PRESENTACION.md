@@ -77,6 +77,13 @@ target/release/phishing-analyzer --json "http://paypa1.com/login/verify"
 > «También lo puedo usar como herramienta: esto devuelve JSON y se puede alimentar a otro
 > sistema, como un antivirus corporativo o un filtro del navegador.»
 
+**Si hay internet en el aula** (diapositiva 3, último punto):
+
+> «Y esto no es solo una foto: está publicado en GitHub Pages. Cualquiera puede abrirlo en su
+> navegador — <https://runer0101.github.io/analizador-phishing/> — y el análisis se hace
+> **en su equipo**, con WebAssembly. El enlace que analizan ni siquiera sale de su
+> navegador.»
+
 ---
 
 ## 4:30 — 5:30 · Lo que el analizador no puede hacer

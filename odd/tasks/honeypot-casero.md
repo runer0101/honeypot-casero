@@ -71,3 +71,6 @@ y responde siempre «Sesión iniciada», sin autenticar a nadie; cualquier otra 
   Corregido y cubierto por una prueba de regresión.
 - **L7** (2026-11-20, Kairos) — Repositorio separado con el nombre de la actividad, para
   que cada mitad se pueda revisar, publicar y defender por separado.
+- **L8** (2026-11-21, Kairos) — El repositorio hermano `analizador-phishing` ya está
+  publicado con su demo en vivo (<https://runer0101.github.io/analizador-phishing/>); se
+  añadió ese enlace a las referencias de este repositorio y al guion completo.

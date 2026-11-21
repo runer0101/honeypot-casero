@@ -10,7 +10,8 @@ que parece un servicio real, deja entrar al atacante y **graba todo lo que hace*
 
 La otra mitad de la actividad es el repositorio hermano
 [`analizador-phishing`](../analizador-phishing): un detector de enlaces de phishing que no
-visita los enlaces.
+visita los enlaces, con su demo en vivo en
+<https://runer0101.github.io/analizador-phishing/>.
 
 ## Requisitos
 
