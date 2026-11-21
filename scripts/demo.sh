@@ -12,7 +12,9 @@ cd "$RAIZ"
 BIN="$RAIZ/target/release/honeypot"
 SSH_PORT="${SSH_PORT:-2222}"
 HTTP_PORT="${HTTP_PORT:-8080}"
-LOG="${LOG:-$RAIZ/logs/honeypot.jsonl}"
+# Ruta relativa a propósito: el log de ejemplo que se entrega no debe filtrar la
+# ruta del equipo donde se generó.
+LOG="${LOG:-logs/honeypot.jsonl}"
 TRAZA="${TRAZA:-$RAIZ/logs/honeypot-servidor.log}"
 
 say() { printf '\n\033[1;36m=== %s ===\033[0m\n' "$1"; }

