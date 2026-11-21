@@ -13,8 +13,11 @@ servicio real, deja entrar al atacante y **graba todo lo que hace**.
 - Visor para leer el registro como texto, y un atacante simulado para la demostración
 
 El proyecto hermano es [`analizador-phishing`](../analizador-phishing): un detector de
-enlaces de phishing que no visita los enlaces, con su demo en vivo en
-<https://runer0101.github.io/analizador-phishing/>.
+enlaces de phishing que **no visita los enlaces**, con su demo en vivo en el navegador
+(<https://runer0101.github.io/analizador-phishing/>), donde el análisis ocurre en el
+equipo del visitante. La trampa, en cambio, es una herramienta de terminal: necesita
+sockets reales, así que **no tiene versión web** y se demuestra en un laboratorio local
+con `scripts/demo.sh`.
 
 ## Requisitos
 
@@ -131,8 +134,10 @@ honeypot-casero/
 │   ├── ci.yml        # formato, lints y pruebas en cada push
 │   └── release.yml   # binarios de Linux, macOS y Windows en cada tag
 ├── docs/
-│   ├── PRESENTACION.md   # el guion completo de los 12 minutos
-│   ├── GUION.md          # la parte del honeypot
+│   ├── PRESENTACION.md   # índice de la exposición de 12 minutos
+│   ├── GUION.md          # el guion minuto a minuto
+│   ├── DEMO.md           # plan de demo en vivo y plan B
+│   ├── Q-A.md            # preguntas del jurado y respuestas
 │   ├── DIAPOSITIVAS.md   # diapositivas 6 a 10
 │   ├── ENSAYO.md         # ensayo sin internet y plan B
 │   ├── CHECKLIST-EXPOSICION.md # los diez puntos del día de la exposición

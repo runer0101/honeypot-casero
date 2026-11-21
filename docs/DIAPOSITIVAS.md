@@ -1,6 +1,7 @@
 # Diapositivas — Honeypot casero (6 a 10)
 
-Cinco diapositivas para los últimos 6:30 de la exposición. Lo que se dice está en
+Cinco diapositivas para el bloque 8–10 minutos, la demo en vivo (10–11) y el cierre
+(11–12). Lo que se dice está en
 [`GUION.md`](GUION.md); las diapositivas 1 a 5 (problema y analizador de phishing) están en
 el repositorio `analizador-phishing`.
 
