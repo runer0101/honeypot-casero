@@ -23,6 +23,12 @@ pub const MAX_FAILED_ATTEMPTS: usize = 2;
 /// atacante real de un script mal configurado.
 pub const MAX_INTENTOS: usize = 10;
 
+/// Tiempo máximo para leer el cuerpo de una petición.
+///
+/// Es más corto que el de la sesión: un cliente que miente sobre el tamaño del
+/// cuerpo no debe poder retener el hilo de la trampa durante minutos.
+pub const TIEMPO_MAXIMO_CUERPO: Duration = Duration::from_secs(10);
+
 /// Tiempo máximo de una sesión.
 ///
 /// Si el atacante se queda quieto, la sesión se cierra sola: ningún hilo debe quedar
@@ -296,6 +302,7 @@ pub fn serve_http_session_con_tiempo(
     // Y lo mismo al escribir: un cliente que no lee no puede dejar el hilo colgado.
     let _ = reader.set_write_timeout(Some(tiempo_maximo));
     let plazo = Instant::now() + tiempo_maximo;
+    let plazo_cuerpo = tiempo_maximo.min(TIEMPO_MAXIMO_CUERPO);
 
     let head = match read_head(&mut reader) {
         Some(head) => head,
@@ -340,7 +347,13 @@ pub fn serve_http_session_con_tiempo(
             declarado: Some(content_length),
         }
     } else if es_post {
-        leer_cuerpo(&mut reader, content_length, chunked)
+        // El cuerpo tiene su propio plazo, más corto que el de la sesión: un cliente
+        // que anuncie un tamaño que no cuadra no puede quedarse reteniendo el hilo
+        // durante minutos.
+        let _ = reader.set_read_timeout(Some(plazo_cuerpo));
+        let cuerpo = leer_cuerpo(&mut reader, content_length, chunked);
+        let _ = reader.set_read_timeout(Some(tiempo_maximo));
+        cuerpo
     } else {
         LecturaCuerpo::Completo(Vec::new())
     };
