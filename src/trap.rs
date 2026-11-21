@@ -1,4 +1,4 @@
-//! The traps: a plaintext SSH-like login service and a fake web login.
+//! Las trampas: un servicio de acceso tipo SSH en texto plano y un acceso web falso.
 
 use crate::log::{Event, EventLog};
 use crate::shell;
@@ -8,13 +8,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// Banner announced by the SSH-like trap.
+/// Banner que anuncia la trampa tipo SSH.
 pub const SSH_BANNER: &str = "SSH-2.0-OpenSSH_9.6 Ubuntu-3ubuntu13";
 
-/// Prompt of the fake shell.
+/// Prompt del shell falso.
 pub const SHELL_PROMPT: &str = "root@victima:~# ";
 
-/// How many credentials are denied before the trap lets the attacker in.
+/// Cuántas credenciales se rechazan antes de dejar entrar al atacante.
 pub const MAX_FAILED_ATTEMPTS: usize = 2;
 
 /// Tope de credenciales aceptadas en una misma sesión.
@@ -29,30 +29,30 @@ pub const MAX_INTENTOS: usize = 10;
 /// esperando para siempre.
 pub const TIEMPO_MAXIMO_SESION: Duration = Duration::from_secs(300);
 
-/// Maximum size accepted for an HTTP request head.
+/// Tamaño máximo admitido para la cabecera de una petición HTTP.
 const MAX_HEAD_BYTES: usize = 8_192;
 
-/// Maximum size accepted for an HTTP body.
+/// Tamaño máximo admitido para el cuerpo de una petición HTTP.
 const MAX_BODY_BYTES: usize = 4_096;
 
-/// Maximum size accepted for one line of the fake shell.
+/// Tamaño máximo admitido para una línea del shell falso.
 ///
-/// A client that never sends a newline cannot make the string grow without limit.
+/// Un cliente que nunca manda el salto de línea no puede hacer crecer la cadena sin límite.
 const MAX_LINE_BYTES: usize = 8_192;
 
-/// Message used when someone tries to bind outside the loopback.
+/// Mensaje que se usa cuando alguien intenta escuchar fuera del loopback.
 const LOOPBACK_ONLY: &str = "el honeypot solo acepta direcciones de loopback (127.0.0.1 o ::1); \
 este laboratorio es una actividad autorizada";
 
-/// `true` for the loopback addresses the traps are allowed to bind.
+/// `true` para las direcciones de loopback en las que la trampa puede escuchar.
 pub fn is_loopback(address: &IpAddr) -> bool {
     address.is_loopback()
 }
 
-/// Starts the SSH-like trap on `bind` and returns the address actually bound.
+/// Levanta la trampa tipo SSH en `bind` y devuelve la dirección realmente escuchada.
 pub fn start_ssh_trap(bind: SocketAddr, log: Arc<EventLog>) -> std::io::Result<SocketAddr> {
-    // The guard lives here, not only in the CLI: anyone who uses the library is also
-    // prevented from binding outside the loopback.
+    // La guarda vive aquí, no solo en la CLI: quien use la biblioteca también queda
+    // protegido de escuchar fuera del loopback.
     if !is_loopback(&bind.ip()) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
@@ -81,7 +81,7 @@ pub fn start_ssh_trap(bind: SocketAddr, log: Arc<EventLog>) -> std::io::Result<S
     Ok(local)
 }
 
-/// Serves one SSH-like session: banner, credentials, then the fake shell.
+/// Atiende una sesión tipo SSH: banner, credenciales y después el shell falso.
 pub fn serve_ssh_session(stream: TcpStream, log: &EventLog, session: &str) {
     serve_ssh_session_con_limites(stream, log, session, MAX_INTENTOS, TIEMPO_MAXIMO_SESION);
 }
@@ -241,9 +241,9 @@ pub fn serve_ssh_session_con_limites(
     );
 }
 
-/// Starts the fake web login on `bind` and returns the address actually bound.
+/// Levanta el acceso web falso en `bind` y devuelve la dirección realmente escuchada.
 pub fn start_http_trap(bind: SocketAddr, log: Arc<EventLog>) -> std::io::Result<SocketAddr> {
-    // Same guard as the SSH trap: the library never binds outside the loopback.
+    // La misma guarda que la trampa SSH: la biblioteca nunca escucha fuera del loopback.
     if !is_loopback(&bind.ip()) {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
@@ -272,7 +272,7 @@ pub fn start_http_trap(bind: SocketAddr, log: Arc<EventLog>) -> std::io::Result<
     Ok(local)
 }
 
-/// Serves one HTTP request: the fake login page, the fake login and a logged 404.
+/// Atiende una petición HTTP: la página de login falsa, el login falso y un 404 anotado.
 pub fn serve_http_session(stream: TcpStream, log: &EventLog, session: &str) {
     serve_http_session_con_tiempo(stream, log, session, TIEMPO_MAXIMO_SESION);
 }
@@ -395,22 +395,22 @@ pub fn serve_http_session_con_tiempo(
     let _ = writer.flush();
 }
 
-/// Fake login page of the web trap.
+/// Página de login falsa de la trampa web.
 pub const LOGIN_PAGE: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Banco Popular — Acceso seguro</title></head>\n<body>\n<h1>Banco Popular</h1>\n<p>Introduzca sus credenciales para continuar.</p>\n<form method=\"post\" action=\"/login\">\n<p><label>Usuario <input name=\"user\" type=\"text\"></label></p>\n<p><label>Contraseña <input name=\"password\" type=\"password\"></label></p>\n<p><button type=\"submit\">Ingresar</button></p>\n</form>\n</body>\n</html>\n";
 
-/// Answer of the web trap after a login. It never authenticates anything.
+/// Respuesta de la trampa web después de un login. No autentica a nadie.
 ///
-/// It shows a fake banking panel with links: every click on them is recorded, so the
-/// operator can see what the attacker looks for once it believes it got in.
+/// Muestra un panel bancario falso con enlaces: cada clic queda anotado, para que el
+/// operador vea qué busca el atacante cuando cree que entró.
 pub const PANEL_PAGE: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Banco Popular — Mi cuenta</title></head>\n<body>\n<h1>Banco Popular</h1>\n<p>Sesión iniciada. El acceso se ha registrado.</p>\n<ul>\n<li><a href=\"/cuenta\">Mi cuenta</a></li>\n<li><a href=\"/transferencia\">Transferencia</a></li>\n<li><a href=\"/descargar-factura\">Descargar factura</a></li>\n</ul>\n</body>\n</html>\n";
 
-/// Any page of the fake bank. It shows plausible but empty content.
+/// Cualquier página del banco falso: contenido verosímil pero vacío.
 pub const PAGINA_FALSA: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>Banco Popular</title></head>\n<body>\n<h1>Banco Popular</h1>\n<p>Documento sin contenido. La navegación quedó registrada.</p>\n</body>\n</html>\n";
 
-/// Answer for any other path.
+/// Respuesta para cualquier otra ruta.
 pub const NOT_FOUND_PAGE: &str = "<!doctype html>\n<html lang=\"es\">\n<head><meta charset=\"utf-8\"><title>404</title></head>\n<body>\n<h1>404 — página no encontrada</h1>\n</body>\n</html>\n";
 
-/// Parses an `application/x-www-form-urlencoded` body.
+/// Analiza un cuerpo `application/x-www-form-urlencoded`.
 pub fn parse_form(body: &str) -> Vec<(String, String)> {
     body.split('&')
         .filter(|pair| !pair.is_empty())
@@ -421,7 +421,7 @@ pub fn parse_form(body: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Decodes the percent encoding of a form value.
+/// Decodifica la codificación porcentual de un valor de formulario.
 pub fn url_decode(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -468,15 +468,15 @@ fn peer_address(stream: &TcpStream) -> String {
         .unwrap_or_else(|_| "desconocido".to_string())
 }
 
-/// What a read from the client returned.
+/// Lo que devolvió una lectura del cliente.
 enum Lectura {
-    /// A complete line arrived.
+    /// Llegó una línea completa.
     Linea(String),
-    /// The client closed the connection.
+    /// El cliente cerró la conexión.
     Fin,
-    /// The client stayed silent for too long.
+    /// El cliente se quedó callado demasiado tiempo.
     TiempoAgotado,
-    /// The line was longer than the accepted maximum.
+    /// La línea era más larga que el máximo admitido.
     DemasiadoLarga,
 }
 
@@ -527,7 +527,7 @@ fn cadena_de(bytes: &[u8]) -> String {
         .to_string()
 }
 
-/// Reads the request head (up to the empty line) one byte at a time.
+/// Lee la cabecera de la petición (hasta la línea vacía) byte a byte.
 fn read_head(reader: &mut TcpStream) -> Option<String> {
     let mut head = Vec::new();
     let mut byte = [0u8; 1];

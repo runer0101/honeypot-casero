@@ -1,10 +1,10 @@
-//! Reads the JSONL log and turns it into a readable summary.
+//! Lee el registro JSONL y lo convierte en un resumen legible.
 
 use crate::log::parse_flat_object;
 use std::fs;
 use std::path::Path;
 
-/// One credential the attacker tried.
+/// Una credencial que el atacante probó.
 #[derive(Debug, Clone)]
 pub struct Attempt {
     pub user: String,
@@ -12,7 +12,7 @@ pub struct Attempt {
     pub result: String,
 }
 
-/// One HTTP request the attacker made.
+/// Una petición HTTP que el atacante hizo.
 #[derive(Debug, Clone)]
 pub struct Request {
     pub method: String,
@@ -22,7 +22,7 @@ pub struct Request {
     pub status: String,
 }
 
-/// Everything recorded about one session.
+/// Todo lo registrado de una sesión.
 #[derive(Debug, Clone, Default)]
 pub struct Session {
     pub id: String,
@@ -37,7 +37,7 @@ pub struct Session {
     pub duration: Option<String>,
 }
 
-/// Reads the log and groups the events by session.
+/// Lee el registro y agrupa los eventos por sesión.
 pub fn read_sessions(path: &Path) -> Result<Vec<Session>, String> {
     let content =
         fs::read_to_string(path).map_err(|e| format!("no se pudo leer {}: {e}", path.display()))?;
@@ -194,7 +194,7 @@ pub fn calcular_estadisticas(sesiones: &[Session]) -> Estadisticas {
     }
 }
 
-/// Renders the sessions for a human reader.
+/// Presenta las sesiones para que las lea una persona.
 pub fn render(sessions: &[Session]) -> String {
     if sessions.is_empty() {
         return "El registro está vacío: todavía no entró nadie.\n".to_string();
@@ -304,7 +304,7 @@ pub fn render(sessions: &[Session]) -> String {
     out
 }
 
-/// Renders the sessions as JSON.
+/// Presenta las sesiones en JSON.
 pub fn to_json(sessions: &[Session]) -> String {
     let items: Vec<String> = sessions
         .iter()

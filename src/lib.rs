@@ -1,14 +1,13 @@
-//! Homemade honeypot for authorized labs.
+//! Trampa casera para laboratorios autorizados.
 //!
-//! Two traps that look attractive to an attacker and record everything they try:
+//! Dos trampas que resultan atractivas para un atacante y que registran todo lo que intenta:
 //!
-//! - a plaintext service that imitates an SSH login (banner, user, password and a fake
-//!   shell). It is an **emulation**, not a real SSH server.
-//! - a fake web login that records the submitted credentials and never authenticates
-//!   anything.
+//! - un servicio en texto plano que imita un acceso SSH (banner, usuario, contraseña y un
+//!   shell falso). Es una **emulación**, no un servidor SSH real.
+//! - un acceso web falso que anota las credenciales enviadas y no autentica a nadie.
 //!
-//! Everything happens on the loopback interface: the traps refuse to bind any other
-//! address, and the log records what the attacker did in an authorized lab.
+//! Todo ocurre en la interfaz de loopback: las trampas se niegan a escuchar en cualquier
+//! otra dirección, y el registro anota lo que hizo el atacante en un laboratorio autorizado.
 
 pub mod attack;
 pub mod log;

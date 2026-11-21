@@ -1,19 +1,19 @@
-//! Scripted attacker used by the demonstration.
+//! Atacante guionizado que usa la demostración.
 //!
-//! It only connects to the honeypot of this lab, so the demo is a closed loop: the
-//! "attacker" is part of the project and never reaches a third-party system.
+//! Solo se conecta a la trampa de este laboratorio, así que la demostración es un
+//! bucle cerrado: el «atacante» es parte del proyecto y nunca llega a un sistema de terceros.
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 
-/// Synthetic passwords, all of them typical of a brute force list.
+/// Contraseñas sintéticas, todas típicas de una lista de fuerza bruta.
 pub const DEFAULT_PASSWORDS: &[&str] = &["123456", "admin", "toor", "password"];
 
-/// Commands the scripted attacker runs once inside the fake shell.
+/// Órdenes que el atacante guionizado ejecuta una vez dentro del shell falso.
 ///
-/// The download address belongs to the TEST-NET-2 range (RFC 5737): it is never resolved
-/// nor contacted, the fake shell only prints what it would answer.
+/// La dirección de descarga pertenece al rango TEST-NET-2 (RFC 5737): nunca se resuelve
+/// ni se contacta, el shell falso solo imprime lo que contestaría.
 pub const DEFAULT_COMMANDS: &[&str] = &[
     "uname -a",
     "whoami",
@@ -24,7 +24,7 @@ pub const DEFAULT_COMMANDS: &[&str] = &[
     "exit",
 ];
 
-/// One credential attempt and what the trap answered.
+/// Un intento de credencial y lo que contestó la trampa.
 #[derive(Debug, Clone)]
 pub struct Attempt {
     pub user: String,
@@ -32,7 +32,7 @@ pub struct Attempt {
     pub response: String,
 }
 
-/// Everything the scripted attacker observed.
+/// Todo lo que observó el atacante guionizado.
 #[derive(Debug, Clone)]
 pub struct AttackOutcome {
     pub banner: String,
@@ -40,7 +40,7 @@ pub struct AttackOutcome {
     pub commands: Vec<(String, String)>,
 }
 
-/// Runs the scripted attack against `target` (for example `127.0.0.1:2222`).
+/// Ejecuta el ataque guionizado contra `target` (por ejemplo `127.0.0.1:2222`).
 pub fn run(target: &str, passwords: &[&str], timeout: Duration) -> Result<AttackOutcome, String> {
     let mut stream =
         TcpStream::connect(target).map_err(|e| format!("no se pudo conectar con {target}: {e}"))?;
@@ -96,8 +96,8 @@ pub fn run(target: &str, passwords: &[&str], timeout: Duration) -> Result<Attack
 
     let mut commands: Vec<(String, String)> = Vec::new();
     if accepted {
-        // The prompt may still be pending in the buffer: consume it before sending
-        // anything, otherwise the first answer would be read one command too early.
+        // El prompt puede seguir en el búfer: se consume antes de enviar nada, si no la
+        // primera respuesta se leería una orden antes de tiempo.
         read_until_any(&mut stream, &mut buffer, &["root@victima:~# "], timeout)?;
 
         for command in DEFAULT_COMMANDS {
@@ -127,10 +127,10 @@ fn write_line(stream: &mut TcpStream, line: &str) -> Result<(), String> {
         .map_err(|e| format!("no se pudo enviar «{line}»: {e}"))
 }
 
-/// Removes the fake shell prompt that closes every answer.
+/// Quita el prompt del shell falso que cierra cada respuesta.
 ///
-/// The prompt is removed before trimming: its trailing space would otherwise be
-/// trimmed away and the pattern would no longer match.
+/// El prompt se quita antes de recortar: si no, su espacio final también se
+/// recortaría y el patrón ya no coincidiría.
 fn clean_response(response: &str) -> String {
     response
         .trim_end_matches(crate::trap::SHELL_PROMPT)
@@ -138,7 +138,7 @@ fn clean_response(response: &str) -> String {
         .to_string()
 }
 
-/// Reads until one of the markers shows up and returns the marker and the text read.
+/// Lee hasta que aparezca una de las marcas y devuelve la marca y el texto leído.
 fn read_until_any(
     stream: &mut TcpStream,
     buffer: &mut String,
@@ -165,7 +165,7 @@ fn read_until_any(
     }
 }
 
-/// Finds the earliest marker inside the buffer.
+/// Busca la marca más temprana dentro del búfer.
 fn find_marker<'a>(buffer: &str, markers: &[&'a str]) -> Option<(usize, &'a str, usize)> {
     let mut best: Option<(usize, &str, usize)> = None;
     for marker in markers {

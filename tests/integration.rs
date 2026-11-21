@@ -1,4 +1,5 @@
-//! End to end tests: a real session against the real traps, on an ephemeral loopback port.
+//! Pruebas de extremo a extremo: una sesión real contra las trampas reales, en un puerto
+//! efímero de loopback.
 
 use honeypot::log::EventLog;
 use honeypot::trap;
@@ -34,7 +35,7 @@ fn read_until(stream: &mut TcpStream, buffer: &mut String, marker: &str) -> Stri
 }
 
 #[test]
-fn ssh_trap_records_the_whole_session() {
+fn la_trampa_ssh_registra_la_sesion_completa() {
     let log_path = temp_log("honeypot-it-ssh.jsonl");
     let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
     let address = trap::start_ssh_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
@@ -52,7 +53,7 @@ fn ssh_trap_records_the_whole_session() {
         "banner inesperado: {banner}"
     );
 
-    // Two denied attempts and one accepted: the trap lets the attacker in to observe it.
+    // Dos intentos rechazados y uno aceptado: la trampa deja entrar al atacante para observarlo.
     for password in ["123456", "admin"] {
         read_until(&mut stream, &mut buffer, "login: ");
         stream.write_all(b"root\n").unwrap();
@@ -84,7 +85,7 @@ fn ssh_trap_records_the_whole_session() {
     let mut rest = String::new();
     let _ = stream.read_to_string(&mut rest);
 
-    // Give the trap a moment to write the closing event.
+    // Se le da a la trampa un momento para escribir el evento de cierre.
     std::thread::sleep(Duration::from_millis(200));
 
     let content = std::fs::read_to_string(&log_path).expect("no se pudo leer el registro");
@@ -102,7 +103,7 @@ fn ssh_trap_records_the_whole_session() {
 }
 
 #[test]
-fn http_trap_records_the_credentials_it_receives() {
+fn la_trampa_web_registra_las_credenciales_que_recibe() {
     let log_path = temp_log("honeypot-it-http.jsonl");
     let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
     let address = trap::start_http_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
@@ -143,7 +144,7 @@ fn http_trap_records_the_credentials_it_receives() {
 }
 
 #[test]
-fn the_scripted_attack_pairs_every_command_with_its_answer() {
+fn el_ataque_guionizado_empareja_cada_orden_con_su_respuesta() {
     let log_path = temp_log("honeypot-it-attack.jsonl");
     let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
     let address = trap::start_ssh_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))
@@ -174,7 +175,7 @@ fn the_scripted_attack_pairs_every_command_with_its_answer() {
     assert!(answer_of("id").contains("uid=0(root)"));
     assert!(answer_of("cat /etc/passwd").contains("root:x:0:0"));
 
-    // The transcript shows the answers, not the shell prompt of the fake host.
+    // La transcripción muestra las respuestas, no el prompt del shell del host falso.
     for (_, response) in &outcome.commands {
         assert!(
             !response.contains("root@victima"),
@@ -186,7 +187,7 @@ fn the_scripted_attack_pairs_every_command_with_its_answer() {
 }
 
 #[test]
-fn unknown_path_is_answered_and_logged() {
+fn una_ruta_desconocida_se_contesta_y_se_anota() {
     let log_path = temp_log("honeypot-it-404.jsonl");
     let log = Arc::new(EventLog::open(&log_path).expect("no se pudo abrir el registro"));
     let address = trap::start_http_trap("127.0.0.1:0".parse().unwrap(), Arc::clone(&log))

@@ -1,4 +1,4 @@
-//! Command line interface of the honeypot.
+//! Interfaz de línea de órdenes del honeypot.
 
 use honeypot::attack::{self, DEFAULT_PASSWORDS};
 use honeypot::log::EventLog;

@@ -1,7 +1,7 @@
-//! Event model, JSONL log writer and time helpers.
+//! Modelo de eventos, escritor del registro JSONL y utilidades de tiempo.
 //!
-//! The log is one JSON object per line. Every value is a string, which keeps the file
-//! readable in a text editor and lets the viewer parse it without a JSON crate.
+//! El registro es un objeto JSON por línea. Cada valor es una cadena: así el archivo se
+//! puede leer en un editor de texto y el visor lo analiza sin ninguna biblioteca de JSON.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// One recorded event.
+/// Un evento anotado.
 #[derive(Debug, Clone)]
 pub struct Event {
     pub ts: String,
@@ -33,13 +33,13 @@ impl Event {
         }
     }
 
-    /// Adds one extra field to the event.
+    /// Añade un campo extra al evento.
     pub fn with(mut self, key: &str, value: &str) -> Event {
         self.fields.push((key.to_string(), value.to_string()));
         self
     }
 
-    /// Serializes the event as a single JSON object.
+    /// Serializa el evento como un único objeto JSON.
     pub fn to_json(&self) -> String {
         let mut parts: Vec<String> = vec![
             format!("\"ts\":{}", json_escape(&self.ts)),
@@ -55,7 +55,7 @@ impl Event {
     }
 }
 
-/// Escapes a string into a JSON literal.
+/// Escapa una cadena para que sea un literal JSON.
 pub fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 2);
     out.push('"');
@@ -74,7 +74,7 @@ pub fn json_escape(value: &str) -> String {
     out
 }
 
-/// Appends events to a JSONL file.
+/// Añade eventos a un archivo JSONL.
 pub struct EventLog {
     path: PathBuf,
     file: Mutex<File>,
@@ -82,7 +82,7 @@ pub struct EventLog {
 }
 
 impl EventLog {
-    /// Opens (or creates) the log file and its parent directory.
+    /// Abre (o crea) el archivo de registro y su carpeta.
     pub fn open(path: &Path) -> io::Result<EventLog> {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -97,12 +97,12 @@ impl EventLog {
         })
     }
 
-    /// When enabled, every event is also printed in a readable line.
+    /// Si está activo, cada evento se imprime también en una línea legible.
     pub fn set_echo(&self, echo: bool) {
         self.echo.store(echo, Ordering::Relaxed);
     }
 
-    /// Writes one event and flushes it, so the file is always readable while the trap runs.
+    /// Escribe un evento y lo vuelca a disco, para que el archivo siempre se pueda leer mientras la trampa corre.
     pub fn append(&self, event: &Event) -> io::Result<()> {
         {
             let mut guard = self
@@ -131,7 +131,7 @@ impl EventLog {
     }
 }
 
-/// Current time as an ISO-8601 UTC timestamp (`2026-11-20T19:37:00Z`).
+/// La hora actual como marca de tiempo ISO-8601 en UTC (`2026-11-20T19:37:00Z`).
 pub fn now_iso8601() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -140,7 +140,7 @@ pub fn now_iso8601() -> String {
     format_epoch(secs)
 }
 
-/// Formats a Unix timestamp as ISO-8601 UTC.
+/// Formatea una marca de tiempo Unix como ISO-8601 en UTC.
 pub fn format_epoch(secs: u64) -> String {
     let days = (secs / 86_400) as i64;
     let rest = secs % 86_400;
@@ -149,7 +149,7 @@ pub fn format_epoch(secs: u64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z")
 }
 
-/// Converts days since the Unix epoch into a civil date (Howard Hinnant's algorithm).
+/// Convierte los días desde la época Unix en una fecha civil (algoritmo de Howard Hinnant).
 fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
@@ -165,9 +165,9 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (year, month, day)
 }
 
-/// Parses a flat JSON object whose values are strings (or bare numbers).
+/// Analiza un objeto JSON plano cuyos valores son cadenas (o números sin comillas).
 ///
-/// Returns `None` when the line is not a JSON object.
+/// Devuelve `None` si la línea no es un objeto JSON.
 pub fn parse_flat_object(line: &str) -> Option<Vec<(String, String)>> {
     let chars: Vec<char> = line.trim().chars().collect();
     let mut index = 0usize;
