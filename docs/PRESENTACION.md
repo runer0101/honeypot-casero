@@ -59,10 +59,10 @@ Señalar en pantalla, uno por uno:
 
 | Lo que se ve | Lo que significa |
 | --- | --- |
-| `+3 typosquat` | el «1» de `paypa1` imita la «l» de PayPal |
-| `+3 brand_impersonation` | dice "paypal" pero el dominio real termina en `.com` |
-| `+2 ip_host` | un login de WordPress servido desde una IP cruda |
-| `+1 hook_words` | palabras de gancho: `login`, `verify`, `clave`… |
+| `+3 typosquatting` | el «1» de `paypa1` imita la «l» de PayPal |
+| `+3 marca_falsa` | dice "paypal" pero el dominio real termina en `.com` |
+| `+2 ip_dominio` | un login de WordPress servido desde una IP cruda |
+| `+1 palabra_gancho` | palabras de gancho: `login`, `verify`, `clave`… |
 
 > «Fíjense en el último caso: `bancounion.com.bo` **es** un sitio real, y el analizador
 > le da un punto porque la ruta dice "verificacion-clave". Eso es un **falso positivo** y
@@ -83,6 +83,10 @@ target/release/phishing-analyzer --json "http://paypa1.com/login/verify"
 > navegador — <https://runer0101.github.io/analizador-phishing/> — y el análisis se hace
 > **en su equipo**, con WebAssembly. El enlace que analizan ni siquiera sale de su
 > navegador.»
+> «Y un detalle que实证é: el analizador **imita al navegador** cuando lee el enlace. Si el
+> navegador borraría una barra sobrante o un tabulador, el analizador también, porque si no
+> vería un dominio distinto al que abriría la persona. Eso es lo que separa una
+> herramienta seria de una lista de palabras.»
 
 ---
 
